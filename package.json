@@ -1,0 +1,18 @@
+{
+  "name": "gang-checkin-reconstructed",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.116.0",
+    "next": "14.2.30",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "tesseract.js": "5.1.1"
+  }
+}

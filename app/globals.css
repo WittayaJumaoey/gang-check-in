@@ -1,0 +1,487 @@
+/* ==========================================================================
+   Kitty Pastel v3 — Flat Candy · Dark Rose
+   สีพื้นเรียบทั้งหมด ไม่มีการไล่เฉดสี ใช้พาสเทลหลายสีแบบผู้หญิงชอบ:
+   ชมพู (ปุ่มหลัก) · ลาเวนเดอร์ (ตัวเลือกที่เลือกอยู่) · มิ้นต์ (มาแล้ว/จ่ายครบ)
+   · ชมพูกุหลาบ (ขาด/ค้างจ่าย) · พีช (คำเตือน)
+   - คลาสทุกตัวเหมือนไฟล์เดิม (ชื่อ .gradient-btn ยังอยู่เพื่อไม่ให้โค้ดพัง แต่เป็นสีพื้นแล้ว)
+   - สีทั้งหมดอยู่ใน :root ปรับที่เดียวจบ
+   - ธีมหลักเป็นชมพูมืด (dusty rosewood) สบายตา ไม่สลับตามโหมดของเครื่อง
+     อยากได้ธีมสว่างกลับมา: ใส่ data-theme="light" ที่แท็ก <html>
+   - พื้นหลังเป็นลายหัวใจ/ดาวจางๆ ที่เคลื่อนช้าๆ (body::before) หยุดลายได้ที่ --banner-motion:paused
+   ========================================================================== */
+
+/* (ทางเลือก) อยากได้ฟอนต์ไทยกลมๆ น่ารักสำหรับโลโก้/หัวข้อ:
+   เอา comment ออก แล้วเปลี่ยน --font-display ใน :root เป็น 'Mali', NotoThai, sans-serif
+@import url('https://fonts.googleapis.com/css2?family=Mali:wght@500;600;700&display=swap');
+*/
+
+@font-face{font-family:NotoThai;src:url('/assets/bfd813093b8ca1bb-s.p.3ok2djvs6w93k.woff2') format('woff2');font-weight:100 900;font-display:swap}
+@font-face{font-family:OswaldLocal;src:url('/assets/6ad1cda2f16975ee-s.p.2j22bd4n1tlhh.woff2') format('woff2');font-weight:400;font-display:swap}
+
+:root{
+  color-scheme:dark;
+  accent-color:#d98aa4;
+  --font-display:OswaldLocal,NotoThai,sans-serif;
+
+  /* พื้นหลังและพื้นผิว */
+  --bg:#2a1b21;
+  --panel:#35222a;
+  --panel2:#2a1b21;
+  --surface:#402a33;
+  --surface-hover:#4b323d;
+  --field:#221419;
+
+  /* เส้นขอบ */
+  --line:#563640;
+  --line-strong:#7d4f5f;
+  --card-edge:#1d1116;  /* เงาแข็งใต้การ์ด */
+
+  /* ตัวอักษร (ขาวอมชมพู ไม่จ้าเท่าขาวล้วน) */
+  --text:#f4e6ea;
+  --text-soft:#e6cfd6;
+  --muted:#c7a6b1;
+  --faint:#a58691;
+
+  /* สีหลัก: ชมพูฝุ่น / สีรอง: ลาเวนเดอร์อมเทา */
+  --primary:#dc9db3;
+  --primary-edge:#b97a90;
+  --secondary:#b9aedb;
+  --secondary-edge:#8c7fbb;
+  --on-accent:#3b1828;  /* ตัวอักษรบนปุ่มพาสเทล */
+
+  /* สีเน้น */
+  --accent:#e8a9bd;
+  --accent-soft:#e8a9bd40;
+  --fill:#d98aa4;  /* แถบ progress / spinner / crop */
+  --track:#3d2830;
+  --brand:#eaa0b8;
+
+  /* สถานะ */
+  --green:#8fd6b3;
+  --green-soft:#23423a;
+  --green-line:#3f7a62;
+  --green-fill:#5fb08f;
+  --rose:#f2a2b6;
+  --rose-soft:#4a2531;
+  --rose-line:#7d3f52;
+  --amber:#f0c9a6;
+  --amber-soft:#45301f;
+  --amber-line:#7d5636;
+
+  /* ชื่อเดิมที่อาจถูกเรียกใช้ในโค้ด — แมปไปยังสีใหม่ */
+  --pink:#dc9db3;
+  --orange:#f0c9a6;
+  --purple:#b9aedb;
+
+  /* ลายพื้นหลังที่เคลื่อนไหวช้าๆ: ชั้นเดียว สีพื้นล้วนจางๆ (ไม่มีการไล่เฉดสี) */
+  --banner:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'%3E%3Cpath fill='%23e58fa9' fill-opacity='.12' transform='translate(38 40) scale(1.2)' d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'/%3E%3Cpath fill='%23b7abd9' fill-opacity='.15' transform='translate(138 118) scale(1)' d='M12 1l2.6 8.4L23 12l-8.4 2.6L12 23l-2.6-8.4L1 12l8.4-2.6z'/%3E%3Ccircle cx='168' cy='42' r='7' fill='%23f2d2ba' fill-opacity='.09'/%3E%3Ccircle cx='62' cy='168' r='5' fill='%23b7abd9' fill-opacity='.15'/%3E%3C/svg%3E");
+  --banner-speed:120s;  /* ตัวเลขมาก = ช้าและเบาเครื่องกว่า */
+  --banner-motion:running;  /* เปลี่ยนเป็น paused เพื่อหยุดลายให้นิ่ง */
+
+  /* ส่วนประกอบอื่น */
+  --tabs-bg:#221419;
+  --tab-active-bg:#4a323c;
+  --dropzone-bg:#2f1e25;
+  --dropzone-hover:#3b262f;
+  --preview-bg:#1c1116;
+  --crop-bg:#d98aa433;
+  --crop-line:#e8a9bd;
+}
+
+*{box-sizing:border-box}
+html,body{min-height:100%;margin:0}
+html{scrollbar-width:thin;scrollbar-color:var(--line-strong) transparent}
+
+body{
+  color:var(--text);
+  background:var(--bg);
+  font-family:NotoThai,system-ui,sans-serif;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ---------- ลายพื้นหลังที่ขยับได้ (ชั้นเดียว เคลื่อนด้วย transform ล้วน เบาต่อ GPU) ---------- */
+body::before{
+  content:"";
+  position:fixed;
+  inset:-220px 0 0 -220px;   /* เกินขอบแค่ซ้าย/บน 1 ลาย พอให้เลื่อนวนได้ */
+  z-index:-1;
+  pointer-events:none;
+  background-image:var(--banner);
+  background-size:220px 220px;
+  background-repeat:repeat;
+  will-change:transform;
+  backface-visibility:hidden;
+  animation:banner-drift var(--banner-speed) linear infinite;
+  animation-play-state:var(--banner-motion);
+}
+/* เลื่อนไปครบ 1 ลายพอดี วนต่อกันเนียนไม่มีรอยต่อ */
+@keyframes banner-drift{to{transform:translate3d(220px,220px,0)}}
+
+::selection{background:var(--primary);color:var(--on-accent)}
+
+button,input,textarea{font:inherit}
+button{cursor:pointer;transition:background-color .15s,border-color .15s,color .15s,transform .12s,box-shadow .12s}
+button:disabled{cursor:not-allowed;opacity:.5}
+
+:focus-visible{outline:2px solid var(--fill);outline-offset:3px}
+
+/* ---------- Layout ---------- */
+.shell{
+  width:100%;
+  max-width:760px;
+  margin:0 auto;
+  padding:40px 16px 56px;
+  animation:rise .5s cubic-bezier(.2,.7,.2,1) both;
+}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.stack{display:grid;gap:18px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.grow{flex:1}
+
+/* ---------- Typography ---------- */
+.brand{
+  font-family:var(--font-display);
+  font-weight:400;
+  letter-spacing:.05em;
+  color:var(--brand);
+  text-shadow:2px 2px 0 var(--line);
+}
+.eyebrow,.label{
+  font-family:NotoThai,system-ui,sans-serif;
+  color:var(--accent);
+  font-size:13px;
+  font-weight:600;
+  letter-spacing:.02em;
+}
+.eyebrow::before{
+  content:"";
+  display:inline-block;
+  width:.95em;
+  height:.95em;
+  margin-right:.45em;
+  vertical-align:-.12em;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23cf8aa2' d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'/%3E%3C/svg%3E") center/contain no-repeat;
+}
+.muted{color:var(--muted);font-size:13px}
+.empty{color:var(--faint);font-size:13px}
+
+/* ---------- Card: ขอบหนา + เงาแข็งใต้การ์ด แบบสติกเกอร์ ---------- */
+.card{
+  border:2px solid var(--line);
+  border-radius:24px;
+  background:var(--panel);
+  box-shadow:0 4px 0 var(--card-edge);
+  padding:22px;
+}
+
+/* ---------- Form ---------- */
+.input,.textarea{
+  width:100%;
+  border:2px solid var(--line);
+  border-radius:14px;
+  background:var(--field);
+  color:var(--text);
+  padding:9px 14px;
+  outline:0;
+  transition:border-color .15s,box-shadow .15s;
+}
+.input::placeholder,.textarea::placeholder{color:var(--faint)}
+.input:focus,.textarea:focus{border-color:var(--fill);box-shadow:0 0 0 4px var(--accent-soft)}
+.textarea{resize:vertical}
+/* กัน Chrome ทับสีช่องกรอกตอน autofill (ที่เห็นเป็นสีเทาม่วง) */
+.input:-webkit-autofill,.input:-webkit-autofill:hover{
+  -webkit-text-fill-color:var(--text);
+  caret-color:var(--text);
+  box-shadow:0 0 0 1000px var(--field) inset;
+}
+.input:-webkit-autofill:focus{
+  -webkit-text-fill-color:var(--text);
+  caret-color:var(--text);
+  box-shadow:0 0 0 1000px var(--field) inset,0 0 0 4px var(--accent-soft);
+}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.field{display:grid;gap:6px}
+.create-row{display:flex;gap:8px}
+
+/* ---------- Buttons: ปุ่มสีพื้นมีเงาแข็ง กดแล้วยุบลง ---------- */
+.gradient-btn{
+  border:0;
+  border-radius:999px;
+  background:var(--primary);
+  color:var(--on-accent);
+  padding:11px 22px;
+  font-weight:700;
+  box-shadow:0 4px 0 var(--primary-edge);
+}
+.gradient-btn:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 5px 0 var(--primary-edge)}
+.gradient-btn:active:not(:disabled){transform:translateY(4px);box-shadow:0 0 0 var(--primary-edge)}
+.gradient-btn:disabled{box-shadow:none}
+
+.subtle-btn{
+  border:2px solid var(--line);
+  border-radius:999px;
+  background:var(--surface);
+  color:var(--text-soft);
+  padding:7px 16px;
+  box-shadow:0 3px 0 var(--line);
+}
+.subtle-btn:hover:not(:disabled){background:var(--surface-hover);border-color:var(--line-strong);box-shadow:0 3px 0 var(--line-strong)}
+.subtle-btn:active:not(:disabled){transform:translateY(3px);box-shadow:0 0 0 var(--line)}
+
+.link-btn{
+  border:0;
+  background:none;
+  color:var(--muted);
+  text-decoration:underline;
+  text-decoration-color:var(--line-strong);
+  text-underline-offset:4px;
+}
+.link-btn:hover{color:var(--accent)}
+
+/* ---------- Top bar ---------- */
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:22px}
+.topbar h1{font-size:34px;margin:0}
+.userbar{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:13px}
+
+/* ---------- Gang pills & tabs ---------- */
+.gangs{display:flex;flex-wrap:wrap;gap:8px}
+.gang-pill{
+  border:2px solid var(--line);
+  border-radius:999px;
+  background:var(--surface);
+  color:var(--text-soft);
+  padding:6px 15px;
+}
+.gang-pill:hover{background:var(--surface-hover);border-color:var(--line-strong)}
+.gang-pill.active{
+  border-color:var(--secondary-edge);
+  background:var(--secondary);
+  color:var(--on-accent);
+  font-weight:600;
+  box-shadow:0 3px 0 var(--secondary-edge);
+}
+
+.tabs{
+  display:flex;
+  gap:4px;
+  border:2px solid var(--line);
+  border-radius:999px;
+  background:var(--tabs-bg);
+  padding:4px;
+}
+.tab{
+  border:0;
+  border-radius:999px;
+  background:transparent;
+  color:var(--muted);
+  padding:8px 16px;
+  font-size:14px;
+}
+.tab:hover{color:var(--accent)}
+.tab.active{
+  background:var(--tab-active-bg);
+  color:var(--accent);
+  font-weight:600;
+  box-shadow:0 2px 0 var(--line-strong);
+}
+
+/* ---------- Upload & crop ---------- */
+.dropzone{
+  display:grid;
+  place-items:center;
+  min-height:130px;
+  border:2px dashed var(--line-strong);
+  border-radius:20px;
+  background:var(--dropzone-bg);
+  color:var(--muted);
+  text-align:center;
+  padding:24px;
+  transition:border-color .15s,background-color .15s;
+}
+.dropzone:hover{border-color:var(--fill);background:var(--dropzone-hover)}
+
+.preview{
+  position:relative;
+  overflow:hidden;
+  border:2px solid var(--line);
+  border-radius:16px;
+  background:var(--preview-bg);
+}
+.preview img{display:block;width:100%;height:auto;user-select:none}
+.crop{
+  position:absolute;
+  border:2px solid var(--crop-line);
+  background:var(--crop-bg);
+  box-shadow:0 0 0 1px #00000066;
+  pointer-events:none;
+}
+
+/* ---------- Alerts: มีแถบสีด้านซ้ายบอกระดับ ---------- */
+.warning,.error,.success{border-radius:16px;padding:12px 16px;font-size:14px}
+.warning{border:2px solid var(--amber-line);background:var(--amber-soft);color:var(--amber);box-shadow:inset 5px 0 0 var(--amber-line)}
+.error{border:2px solid var(--rose-line);background:var(--rose-soft);color:var(--rose);box-shadow:inset 5px 0 0 var(--rose-line)}
+.success{border:2px solid var(--green-line);background:var(--green-soft);color:var(--green);box-shadow:inset 5px 0 0 var(--green-line)}
+
+/* ---------- List, status, chips ---------- */
+.list{list-style:none;margin:0;padding:0}
+.list li{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:10px 10px;
+  margin:0 -10px;
+  border-bottom:2px dashed var(--line);
+  border-radius:12px;
+  transition:background-color .15s;
+}
+.list li:hover{background:var(--surface-hover)}
+.list li:last-child{border-bottom:0}
+
+.status,.payment-status{font-variant-numeric:tabular-nums}
+.status::before,.payment-status::before{
+  content:"";
+  display:inline-block;
+  width:6px;
+  height:6px;
+  margin-right:6px;
+  border-radius:50%;
+  background:currentColor;
+  vertical-align:middle;
+  position:relative;
+  top:-1px;
+}
+.status{
+  border-radius:999px;
+  padding:3px 11px;
+  font-family:NotoThai,system-ui,sans-serif;
+  font-size:12px;
+  font-weight:600;
+}
+.present{background:var(--green-soft);color:var(--green)}
+.absent{background:var(--rose-soft);color:var(--rose)}
+
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{
+  border:1.5px solid var(--rose-line);
+  border-radius:999px;
+  background:var(--rose-soft);
+  color:var(--rose);
+  padding:4px 12px;
+  font-size:12px;
+}
+.present-chip{
+  border-color:var(--green-line);
+  background:var(--green-soft);
+  color:var(--green);
+}
+
+/* ---------- Login ---------- */
+.login{max-width:440px;min-height:calc(100vh - 80px);display:grid;align-content:center}
+.login h1{font-size:58px;margin:0}
+
+/* ---------- Spinner ---------- */
+.spinner{
+  width:32px;
+  height:32px;
+  border:3px solid var(--track);
+  border-top-color:var(--fill);
+  border-radius:50%;
+  animation:spin 1s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ---------- Payment & progress ---------- */
+.payment-status{border-radius:999px;padding:6px 13px;background:var(--rose-soft);color:var(--rose);font-size:13px;font-weight:700}
+.payment-complete{background:var(--green-soft);color:var(--green)}
+
+.progress-track{
+  height:14px;
+  overflow:hidden;
+  border:2px solid var(--line);
+  border-radius:999px;
+  background:var(--track);
+}
+.progress-fill{
+  height:100%;
+  border-radius:inherit;
+  background:var(--fill);
+  transition:width .25s ease;
+}
+.progress-complete{background:var(--green-fill)}
+
+.payment-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.payment-row-complete{background:var(--green-soft);border-radius:14px;padding:8px 12px}
+.payment-subtitle{display:block;margin-top:3px}
+.payment-input{width:150px;font-variant-numeric:tabular-nums}
+.payment-row-complete .payment-input{border-color:var(--green-line)}
+
+/* ---------- Responsive ---------- */
+@media(max-width:600px){
+  .shell{padding:28px 14px 48px}
+  .form-grid{grid-template-columns:1fr}
+  .topbar{align-items:flex-start;flex-direction:column}
+  .userbar{width:100%;justify-content:space-between}
+  .create-row{flex-direction:column}
+  .login h1{font-size:46px}
+  .card{padding:18px;border-radius:20px}
+  body::before{animation:none}   /* มือถือ: ให้ลายนิ่ง ประหยัดแรงเครื่อง */
+}
+
+@media(prefers-reduced-motion:reduce){
+  *{transition:none!important}
+  .shell{animation:none}
+  .spinner{animation-duration:2.4s}
+  body::before{animation:none}
+}
+
+/* ---------- ธีมสว่างชมพูฝุ่น (เปิดใช้เมื่อใส่ data-theme="light" ที่แท็ก <html>) ---------- */
+:root[data-theme="light"]{
+  color-scheme:light;
+  accent-color:#ba6485;
+  --bg:#f7ecef;
+  --panel:#fdf8f9;
+  --panel2:#fbf3f5;
+  --surface:#fdf8f9;
+  --surface-hover:#f3e3e8;
+  --field:#fffcfd;
+  --line:#ecd6dd;
+  --line-strong:#dcb9c6;
+  --card-edge:#e7cdd5;
+  --text:#58404b;
+  --text-soft:#6c5360;
+  --muted:#7a6069;
+  --faint:#816670;
+  --primary:#ecbfcd;
+  --primary-edge:#d8a0b3;
+  --secondary:#d9d1ec;
+  --secondary-edge:#b9aedb;
+  --on-accent:#58283e;
+  --accent:#9b4a69;
+  --accent-soft:#e2a9bc66;
+  --fill:#ba6485;
+  --track:#efdde3;
+  --brand:#b26583;
+  --green:#24664a;
+  --green-soft:#d4ebdf;
+  --green-line:#9ccdb4;
+  --green-fill:#62b391;
+  --rose:#963249;
+  --rose-soft:#f5dbe1;
+  --rose-line:#e8b0bf;
+  --amber:#80471a;
+  --amber-soft:#f7e5d2;
+  --amber-line:#ecc7a4;
+  --pink:#ecbfcd;
+  --orange:#f2d2ba;
+  --purple:#d9d1ec;
+  --banner:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'%3E%3Cpath fill='%23d8a4b6' fill-opacity='.22' transform='translate(38 40) scale(1.2)' d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'/%3E%3Cpath fill='%23c6bde3' fill-opacity='.30' transform='translate(138 118) scale(1)' d='M12 1l2.6 8.4L23 12l-8.4 2.6L12 23l-2.6-8.4L1 12l8.4-2.6z'/%3E%3Ccircle cx='168' cy='42' r='7' fill='%23eec8b0' fill-opacity='.32'/%3E%3Ccircle cx='62' cy='168' r='5' fill='%23c6bde3' fill-opacity='.30'/%3E%3C/svg%3E");
+  --tabs-bg:#f1e0e6;
+  --tab-active-bg:#fdf8f9;
+  --dropzone-bg:#fbf3f5;
+  --dropzone-hover:#f3e3e8;
+  --preview-bg:#f3e3e8;
+  --crop-bg:#ba64852e;
+  --crop-line:#ba6485;
+}
+:root[data-theme="light"] .crop{box-shadow:0 0 0 1px #ffffff99}
