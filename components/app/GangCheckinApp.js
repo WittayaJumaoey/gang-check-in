@@ -702,6 +702,282 @@ function Payments({ gang, update }) {
   );
 }
 
+function groupLogsByDate(logs) {
+  return [...logs]
+    .sort((a, b) => {
+      const dateCmp = String(b.date || "").localeCompare(String(a.date || ""));
+      if (dateCmp) return dateCmp;
+      return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
+    })
+    .reduce((groups, log) => {
+      const date = log.date || "ไม่ระบุวันที่";
+      const last = groups[groups.length - 1];
+      if (last?.date === date) last.items.push(log);
+      else groups.push({ date, items: [log] });
+      return groups;
+    }, []);
+}
+
+function Safe({ gang, update }) {
+  const data = readLocalStore();
+  const isAdmin = data.currentUser === "Admin";
+  const items = gang.safeItems || [];
+  const logs = gang.safeLogs || [];
+  const [itemName, setItemName] = useState("");
+  const [stockQty, setStockQty] = useState("");
+  const [date, setDate] = useState(today());
+  const [memberId, setMemberId] = useState(gang.members[0]?.id || "");
+  const [withdrawQty, setWithdrawQty] = useState({});
+  const [note, setNote] = useState("");
+  const [message, setMessage] = useState("");
+  useEffect(() => {
+    if (!gang.members.some((member) => member.id === memberId)) {
+      setMemberId(gang.members[0]?.id || "");
+    }
+  }, [gang.members, memberId]);
+  const logsByDate = groupLogsByDate(logs);
+  const withdrawStats = gang.members
+    .map((member) => ({
+      ...member,
+      count: logs.filter((log) => log.type === "out" && log.memberId === member.id).length,
+    }))
+    .filter((member) => member.count)
+    .sort((a, b) => b.count - a.count);
+  const inStock = items.filter((item) => Number(item.qty) > 0);
+  const emptyStock = items.filter((item) => Number(item.qty) <= 0);
+  const saveSafe = async (safeItems, safeLogs, successMessage) => {
+    try {
+      await update({ safeItems, safeLogs });
+      setMessage(successMessage);
+    } catch (error) {
+      setMessage(`บันทึกไม่สำเร็จ: ${error.message}`);
+    }
+  };
+  const addStock = async () => {
+    const name = itemName.trim();
+    const qty = Number(stockQty);
+    if (!name || !Number.isFinite(qty) || qty <= 0) return;
+    const existing = items.find((item) => item.name.trim().toLowerCase() === name.toLowerCase());
+    const nextItems = existing
+      ? items.map((item) => item.id === existing.id ? { ...item, qty: Number(item.qty) + qty } : item)
+      : [...items, { id: uid(), name, qty }];
+    const item = existing || nextItems[nextItems.length - 1];
+    await saveSafe(nextItems, [{
+      id: uid(),
+      date,
+      type: "in",
+      itemId: item.id,
+      itemName: item.name,
+      quantity: qty,
+      note: existing ? "เติมของเข้าตู้" : "เพิ่มไอเทมใหม่",
+      user: data.currentUser || "Admin",
+      createdAt: new Date().toISOString(),
+    }, ...logs], `บันทึกแล้ว ✓ นำ ${item.name} เข้าตู้ ${qty} ชิ้น`);
+    setItemName("");
+    setStockQty("");
+  };
+  const withdraw = async () => {
+    const picks = items
+      .map((item) => ({ item, qty: Number(withdrawQty[item.id] || 0) }))
+      .filter(({ qty }) => Number.isFinite(qty) && qty > 0);
+    if (!memberId || !picks.length) return;
+    const shortage = picks.find(({ item, qty }) => Number(item.qty) < qty);
+    if (shortage) {
+      setMessage(`ของในตู้ไม่พอ: ${shortage.item.name} มี ${shortage.item.qty} ชิ้น`);
+      return;
+    }
+    const nextItems = items.map((item) => {
+      const pick = picks.find((entry) => entry.item.id === item.id);
+      return pick ? { ...item, qty: Number(item.qty) - pick.qty } : item;
+    });
+    const createdAt = new Date().toISOString();
+    const nextLogs = [
+      ...picks.map(({ item, qty }) => ({
+        id: uid(),
+        date,
+        type: "out",
+        itemId: item.id,
+        itemName: item.name,
+        quantity: qty,
+        memberId,
+        note: note.trim(),
+        user: data.currentUser || "Admin",
+        createdAt,
+      })),
+      ...logs,
+    ];
+    const summary = picks.map(({ item, qty }) => `${item.name} ${qty}`).join(" · ");
+    await saveSafe(nextItems, nextLogs, `บันทึกแล้ว ✓ เบิก ${summary}`);
+    setWithdrawQty({});
+    setNote("");
+  };
+  const removeItem = async (id) => {
+    await saveSafe(
+      items.filter((item) => item.id !== id),
+      logs,
+      "ลบไอเทมออกจากตู้แล้ว",
+    );
+  };
+  return (
+    <div className="stack">
+      <Card>
+        <div className="form-grid">
+          <label className="field">
+            <span className="label">วันที่</span>
+            <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </label>
+          <label className="field">
+            <span className="label">หมายเหตุ (ไม่บังคับ)</span>
+            <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="เช่น เบิกรอบดึก" />
+          </label>
+        </div>
+      </Card>
+      <Card className="stack">
+        <div className="row">
+          <div>
+            <p className="label">ของในตู้เซฟ</p>
+            <p className="muted">มีของ {inStock.length} รายการ · หมด {emptyStock.length} รายการ</p>
+          </div>
+          <span className="muted">{items.length} ไอเทม</span>
+        </div>
+        {inStock.length > 0 && (
+          <div className="chips">
+            {inStock.map((item) => (
+              <span className="chip present-chip" key={item.id}>{item.name} · {item.qty}</span>
+            ))}
+          </div>
+        )}
+        {emptyStock.length > 0 && (
+          <div className="chips">
+            {emptyStock.map((item) => (
+              <span className="chip" key={item.id}>{item.name} · หมด</span>
+            ))}
+          </div>
+        )}
+        {!items.length && <p className="empty">ยังไม่มีไอเทมในตู้เซฟ</p>}
+      </Card>
+      <Card className="stack">
+        <p className="label">นำของเข้าตู้</p>
+        <div className="form-grid">
+          <label className="field">
+            <span className="label">ชื่อไอเทม</span>
+            <input className="input" list="safe-item-names" value={itemName} onChange={(e) => setItemName(e.target.value)} placeholder="เช่น ยา, อาวุธ" />
+            <datalist id="safe-item-names">
+              {items.map((item) => <option key={item.id} value={item.name} />)}
+            </datalist>
+          </label>
+          <label className="field">
+            <span className="label">จำนวน</span>
+            <input className="input" type="number" min="1" value={stockQty} onChange={(e) => setStockQty(e.target.value)} placeholder="จำนวนชิ้น" />
+          </label>
+        </div>
+        {isAdmin && <Button onClick={addStock} disabled={!itemName.trim() || !stockQty}>บันทึกของเข้าตู้</Button>}
+        {!isAdmin && <p className="warning">ดูของในตู้ได้ แต่เฉพาะ Admin เท่านั้นที่แก้ไขได้</p>}
+      </Card>
+      <Card className="stack">
+        <div className="row">
+          <p className="label">เบิกของออกจากตู้</p>
+          <span className="muted">เลือกจำนวนที่ต้องการเบิก แล้วบันทึก</span>
+        </div>
+        <label className="field">
+          <span className="label">ผู้เบิก</span>
+          <select className="input" value={memberId} onChange={(e) => setMemberId(e.target.value)}>
+            <option value="">เลือกสมาชิก</option>
+            {gang.members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
+          </select>
+        </label>
+        {items.length ? (
+          <ul className="list">
+            {items.map((item) => (
+              <li key={item.id} className="payment-row">
+                <span className="grow">
+                  <strong>{item.name}</strong>
+                  <span className="muted payment-subtitle">คงเหลือ {item.qty} ชิ้น</span>
+                </span>
+                <input
+                  className="input payment-input safe-qty"
+                  type="number"
+                  min="0"
+                  max={item.qty}
+                  value={withdrawQty[item.id] || ""}
+                  disabled={!isAdmin || item.qty <= 0}
+                  onChange={(e) => setWithdrawQty((old) => ({ ...old, [item.id]: e.target.value }))}
+                  placeholder="0"
+                />
+                {isAdmin && (
+                  <button className="link-btn" onClick={() => removeItem(item.id)}>ลบ</button>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="empty">เพิ่มไอเทมก่อนจึงจะเบิกได้</p>
+        )}
+        {isAdmin && (
+          <Button onClick={withdraw} disabled={!memberId || !items.some((item) => Number(withdrawQty[item.id] || 0) > 0)}>
+            บันทึกการเบิก
+          </Button>
+        )}
+      </Card>
+      {message && (
+        <p className={message.startsWith("บันทึกไม่สำเร็จ") || message.startsWith("ของในตู้ไม่พอ") ? "error" : message.startsWith("บันทึกแล้ว") ? "success" : "muted"}>
+          {message}
+        </p>
+      )}
+      {withdrawStats.length > 0 && (
+        <Card>
+          <h2 className="label">เบิกบ่อยที่สุด</h2>
+          <ul className="list">
+            {withdrawStats.map((member) => (
+              <li key={member.id}>
+                <span className="grow">{member.name}</span>
+                <span className="status absent">เบิก {member.count} ครั้ง</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+      {logsByDate.length ? logsByDate.map((group) => {
+        const incoming = group.items.filter((log) => log.type === "in");
+        const outgoing = group.items.filter((log) => log.type === "out");
+        return (
+          <Card key={group.date}>
+            <div className="row">
+              <strong>{group.date}</strong>
+              <span className="muted">เข้า {incoming.length} · เบิก {outgoing.length}</span>
+            </div>
+            {incoming.length > 0 && (
+              <div className="chips" style={{ marginTop: 12 }}>
+                {incoming.map((log) => (
+                  <span className="chip present-chip" key={log.id}>
+                    เข้า {log.itemName} × {log.quantity}{log.note ? ` · ${log.note}` : ""}
+                  </span>
+                ))}
+              </div>
+            )}
+            {outgoing.length > 0 && (
+              <div className="chips" style={{ marginTop: 8 }}>
+                {outgoing.map((log) => {
+                  const member = gang.members.find((item) => item.id === log.memberId);
+                  return (
+                    <span className="chip" key={log.id}>
+                      เบิก {log.itemName} × {log.quantity}{member ? ` · ${member.name}` : ""}{log.note ? ` · ${log.note}` : ""}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+        );
+      }) : (
+        <Card>
+          <p className="empty">ยังไม่มีประวัติการเบิกหรือนำของเข้าตู้</p>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 export default function GangCheckinApp() {
   const [user, setUser] = useState(undefined);
   const [gangs, setGangs] = useState([]);
@@ -837,6 +1113,7 @@ export default function GangCheckinApp() {
               ["members", "สมาชิก"],
               ["history", "ประวัติ"],
               ["payments", "ส่งเงิน"],
+              ["safe", "ตู้เซฟ"],
             ].map(([value, text]) => (
               <button
                 className={`tab ${tab === value ? "active" : ""}`}
@@ -851,6 +1128,7 @@ export default function GangCheckinApp() {
           {tab === "members" && <Members gang={gang} update={updateGang} />}
           {tab === "history" && <History gang={gang} refresh={sync} />}
           {tab === "payments" && <Payments gang={gang} update={sync} />}
+          {tab === "safe" && <Safe gang={gang} update={updateGang} />}
         </div>
       )}
     </main>
