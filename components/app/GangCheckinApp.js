@@ -195,15 +195,15 @@ function loadImage(src) {
 }
 
 const STORAGE_CATALOG = [
-  "เงินสด", "Aed", "Armor", "BLACK COIN", "Cement", "Copper",
+  "เงินดำ", "Aed", "Armor", "BLACK COIN", "Cement", "Copper",
   "Diamond", "EXP", "Gold", "Happy Box", "Painkiller", "Painkiller Pack",
   "Plier", "Steel", "Stone", "Vibranium Scrap", "Weapon Box", "Wood log",
 ];
 
 function prepareOcrCanvas(image, x, y, width, height, invert = false) {
   const canvas = document.createElement("canvas");
-  canvas.width = 480;
-  canvas.height = 180;
+  canvas.width = 960;
+  canvas.height = 240;
   const context = canvas.getContext("2d", { willReadFrequently: true });
   context.drawImage(image, x, y, width, height, 0, 0, canvas.width, canvas.height);
   const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
@@ -219,6 +219,21 @@ function prepareOcrCanvas(image, x, y, width, height, invert = false) {
   return canvas;
 }
 
+function cleanOcrName(value) {
+  return value
+    .replace(/[^a-zA-Z0-9ก-๙&'()_ -]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractDigitCandidates(value) {
+  return value
+    .split(/\s+/)
+    .map((part) => part.replace(/[^0-9]/g, ""))
+    .filter((part) => part.length > 0 && part.length <= 7)
+    .sort((left, right) => right.length - left.length);
+}
+
 async function splitItemGrid(src, cols, rows) {
   const image = await loadImage(src);
   const columns = Math.max(1, Number(cols) || 1);
@@ -229,12 +244,7 @@ async function splitItemGrid(src, cols, rows) {
   const isStorageGrid = columns === 6 && rowCount === 3;
   const found = [];
   const worker = isSingle ? null : await createWorker("eng");
-  if (worker) {
-    await worker.setParameters({
-      tessedit_char_whitelist: "0123456789",
-      tessedit_pageseg_mode: "7",
-    });
-  }
+  if (worker) await worker.setParameters({ tessedit_pageseg_mode: "7" });
   for (let row = 0; row < rowCount; row += 1) {
     for (let col = 0; col < columns; col += 1) {
       const sourceX = cellWidth * col;
@@ -251,19 +261,51 @@ async function splitItemGrid(src, cols, rows) {
       const imageH = isSingle ? sourceH : sourceH * 0.54;
       context.drawImage(image, sourceX + imageX, sourceY + imageY, imageW, imageH, 0, 0, 80, 80);
       const slot = row * columns + col;
-      name = isStorageGrid ? STORAGE_CATALOG[slot] : `ไอเทม ${slot + 1}`;
+      let name = isStorageGrid ? STORAGE_CATALOG[slot] : `ไอเทม ${slot + 1}`;
       let qty = "1";
       if (worker && !isSingle) {
-        const ocrCanvas = prepareOcrCanvas(
+        await worker.setParameters({
+          tessedit_char_whitelist: "0123456789",
+          tessedit_pageseg_mode: "7",
+        });
+        const quantityCanvases = [
+          prepareOcrCanvas(image, sourceX + sourceW * 0.03, sourceY, sourceW * 0.94, sourceH * 0.24),
+          prepareOcrCanvas(image, sourceX, sourceY, sourceW, sourceH * 0.34, true),
+          prepareOcrCanvas(image, sourceX + sourceW * 0.12, sourceY, sourceW * 0.88, sourceH * 0.28),
+        ];
+        const quantityCandidates = [];
+        for (const quantityCanvas of quantityCanvases) {
+          const result = await worker.recognize(quantityCanvas.toDataURL("image/png"));
+          quantityCandidates.push(...extractDigitCandidates(result.data.text));
+        }
+        const bestQuantity = quantityCandidates
+          .filter((value) => Number(value) >= 0)
+          .sort((left, right) => {
+            const leftValue = Number(left);
+            const rightValue = Number(right);
+            if (left.length !== right.length) return right.length - left.length;
+            return rightValue - leftValue;
+          })[0];
+        if (bestQuantity) qty = bestQuantity;
+
+        await worker.setParameters({
+          tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789กขฃคฆงจฉชซฌญฎฏฐฑฒณดตถทธนบปผฝพฟภมยรลวศษสหฬอฮะาำิีึืุูเแโใไ์่้๊๋ัะ0123456789 -&'()_",
+          tessedit_pageseg_mode: "7",
+        });
+        const nameCanvas = prepareOcrCanvas(
           image,
-          sourceX + sourceW * 0.42,
-          sourceY,
-          sourceW * 0.58,
-          sourceH * 0.25,
+          sourceX + sourceW * 0.04,
+          sourceY + sourceH * 0.58,
+          sourceW * 0.92,
+          sourceH * 0.27,
         );
-        const result = await worker.recognize(ocrCanvas.toDataURL("image/png"));
-        const digits = result.data.text.replace(/[^0-9]/g, "").match(/\d{1,6}/);
-        if (digits) qty = digits[0];
+        const nameResult = await worker.recognize(nameCanvas.toDataURL("image/png"));
+        const detectedName = cleanOcrName(nameResult.data.text);
+        if (
+          detectedName &&
+          /[a-zA-Zก-๙]/.test(detectedName) &&
+          nameResult.data.confidence >= 45
+        ) name = detectedName;
       }
       found.push({
         id: uid(),
