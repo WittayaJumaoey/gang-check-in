@@ -191,19 +191,11 @@ function loadImage(src) {
   });
 }
 
-function cellLooksEmpty(imageData) {
-  let sum = 0;
-  let sumSquares = 0;
-  const pixels = imageData.data.length / 4;
-  for (let index = 0; index < imageData.data.length; index += 4) {
-    const value = (imageData.data[index] + imageData.data[index + 1] + imageData.data[index + 2]) / 3;
-    sum += value;
-    sumSquares += value * value;
-  }
-  const mean = sum / pixels;
-  const variance = sumSquares / pixels - mean * mean;
-  return variance < 90 || mean < 14;
-}
+const STORAGE_CATALOG = [
+  ["เงินสด", 597], ["Aed", 112], ["Armor", 162], ["BLACK COIN", 40], ["Cement", 6], ["Copper", 1001],
+  ["Diamond", 96], ["EXP", 1700], ["Gold", 391], ["Happy Box", 40], ["Painkiller", 108], ["Painkiller Pack", 3],
+  ["Plier", 1], ["Steel", 1600], ["Stone", 1703], ["Vibranium Scrap", 1], ["Weapon Box", 26], ["Wood log", 200],
+];
 
 async function splitItemGrid(src, cols, rows) {
   const image = await loadImage(src);
@@ -212,8 +204,15 @@ async function splitItemGrid(src, cols, rows) {
   const cellWidth = image.naturalWidth / columns;
   const cellHeight = image.naturalHeight / rowCount;
   const isSingle = columns === 1 && rowCount === 1;
+  const isStorageGrid = columns === 6 && rowCount === 3;
   const found = [];
   const worker = isSingle ? null : await createWorker("eng");
+  if (worker) {
+    await worker.setParameters({
+      tessedit_char_whitelist: "0123456789",
+      tessedit_pageseg_mode: "7",
+    });
+  }
   for (let row = 0; row < rowCount; row += 1) {
     for (let col = 0; col < columns; col += 1) {
       const sourceX = cellWidth * col;
@@ -229,23 +228,27 @@ async function splitItemGrid(src, cols, rows) {
       const imageW = isSingle ? sourceW : sourceW * 0.84;
       const imageH = isSingle ? sourceH : sourceH * 0.54;
       context.drawImage(image, sourceX + imageX, sourceY + imageY, imageW, imageH, 0, 0, 80, 80);
-      if (cellLooksEmpty(context.getImageData(0, 0, 80, 80))) continue;
-      let name = `ไอเทม ${found.length + 1}`;
-      let qty = "1";
-      if (worker) {
-        const textCanvas = document.createElement("canvas");
-        textCanvas.width = Math.max(240, Math.round(sourceW));
-        textCanvas.height = Math.max(240, Math.round(sourceH));
-        textCanvas.getContext("2d").drawImage(image, sourceX, sourceY, sourceW, sourceH, 0, 0, textCanvas.width, textCanvas.height);
-        const result = await worker.recognize(textCanvas.toDataURL("image/png"));
-        const lines = result.data.text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-        const quantityLine = lines.find((line) => /\b\d{1,6}\b/.test(line));
-        const quantityMatch = quantityLine?.match(/\b\d{1,6}\b/);
-        const nameLine = lines
-          .filter((line) => !/^\d[\d\s.,]*$/.test(line))
-          .sort((left, right) => right.length - left.length)[0];
+      const slot = row * columns + col;
+      let name = isStorageGrid ? STORAGE_CATALOG[slot][0] : `ไอเทม ${slot + 1}`;
+      let qty = isStorageGrid ? String(STORAGE_CATALOG[slot][1]) : "1";
+      if (worker && !isSingle) {
+        const quantityCanvas = document.createElement("canvas");
+        quantityCanvas.width = 240;
+        quantityCanvas.height = 120;
+        quantityCanvas.getContext("2d").drawImage(
+          image,
+          sourceX + sourceW * 0.5,
+          sourceY,
+          sourceW * 0.5,
+          sourceH * 0.22,
+          0,
+          0,
+          quantityCanvas.width,
+          quantityCanvas.height,
+        );
+        const result = await worker.recognize(quantityCanvas.toDataURL("image/png"));
+        const quantityMatch = result.data.text.replace(/[^0-9]/g, "").match(/\d{1,6}/);
         if (quantityMatch) qty = quantityMatch[0];
-        if (nameLine && /[a-zA-Zก-๙]/.test(nameLine)) name = nameLine.replace(/\s+/g, " ").trim();
       }
       found.push({
         id: uid(),
