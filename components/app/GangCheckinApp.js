@@ -456,103 +456,48 @@ async function recognizeVariants(worker, canvases) {
 
 async function splitItemGrid(src, cols, rows, extraNames = []) {
   const image = await loadImage(src);
-  const isSingle = Number(cols) === 1 && Number(rows) === 1;
-  const detected = isSingle ? null : detectInventoryGrid(image);
-  const columns = isSingle ? 1 : detected?.columns || Math.max(1, Number(cols) || 1);
-  const rowCount = isSingle ? 1 : detected?.rows || Math.max(1, Number(rows) || 1);
-  const cells = isSingle
-    ? [{ x: 0, y: 0, w: image.naturalWidth, h: image.naturalHeight, row: 0, col: 0 }]
-    : detected?.cells || uniformCells(image, columns, rowCount);
+  const columns = Math.max(1, Number(cols) || 1);
+  const rowCount = Math.max(1, Number(rows) || 1);
+  const cellWidth = image.naturalWidth / columns;
+  const cellHeight = image.naturalHeight / rowCount;
+  const isSingle = columns === 1 && rowCount === 1;
+  const isStorageGrid = columns === 6 && rowCount === 3;
   const catalog = buildItemCatalog(extraNames);
   const found = [];
-  let worker = null;
-  if (!isSingle) {
-    try {
-      worker = await createWorker(["eng", "tha"]);
-    } catch {
-      worker = await createWorker("eng");
+  const worker = isSingle ? null : await createWorker("eng");
+  if (worker) await worker.setParameters({ tessedit_pageseg_mode: "7" });
+  for (let row = 0; row < rowCount; row += 1) {
+    for (let col = 0; col < columns; col += 1) {
+      const sourceX = cellWidth * col;
+      const sourceY = cellHeight * row;
+      const sourceW = Math.max(1, cellWidth);
+      const sourceH = Math.max(1, cellHeight);
+      const canvas = document.createElement("canvas");
+      canvas.width = 96;
+      canvas.height = 96;
+      const context = canvas.getContext("2d");
+      context.drawImage(image, sourceX + sourceW * 0.08, sourceY + sourceH * 0.16, sourceW * 0.84, sourceH * 0.54, 0, 0, 96, 96);
+      const slot = row * columns + col;
+      let name = isStorageGrid ? STORAGE_ITEMS[slot]?.name || `ไอเทม ${slot + 1}` : `ไอเทม ${slot + 1}`;
+      let qty = "1";
+      if (worker) {
+        await worker.setParameters({ tessedit_char_whitelist: "0123456789 ", tessedit_pageseg_mode: "7" });
+        const quantityTexts = await recognizeVariants(worker, [
+          prepareOcrCanvas(image, sourceX, sourceY, sourceW, sourceH * 0.24),
+          prepareOcrCanvas(image, sourceX, sourceY, sourceW, sourceH * 0.24, true),
+          prepareOcrCanvas(image, sourceX + sourceW * 0.04, sourceY, sourceW * 0.96, sourceH * 0.2, true),
+        ]);
+        qty = pickQuantity(quantityTexts.flatMap(extractNumbers), "1");
+        await worker.setParameters({ tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzกขฃคฅฆงจฉชซฌญฎฏฐฑฒณดตถทธนบปผฝพฟภมยรลวศษสหฬอฮะาิีึืุูเแโใไ์่้๊๋ัำ -&'()", tessedit_pageseg_mode: "7" });
+        const nameTexts = await recognizeVariants(worker, [
+          prepareOcrCanvas(image, sourceX + sourceW * 0.04, sourceY + sourceH * 0.68, sourceW * 0.92, sourceH * 0.28),
+          prepareOcrCanvas(image, sourceX + sourceW * 0.04, sourceY + sourceH * 0.68, sourceW * 0.92, sourceH * 0.28, true),
+        ]);
+        const detectedName = nameTexts.map((text) => bestCatalogMatch(text, catalog)).find((value) => value.length >= 2);
+        if (detectedName) name = detectedName;
+      }
+      found.push({ id: uid(), image: canvas.toDataURL("image/jpeg", 0.78), name, qty, selected: true });
     }
-  }
-  const rowNames = [];
-  const rowQuantities = [];
-  if (worker) {
-    for (let row = 0; row < rowCount; row += 1) {
-      const rowCells = cells.filter((cell) => cell.row === row).sort((left, right) => left.col - right.col);
-      if (!rowCells.length) continue;
-      const left = rowCells[0].x;
-      const top = Math.min(...rowCells.map((cell) => cell.y));
-      const width = rowCells[rowCells.length - 1].x + rowCells[rowCells.length - 1].w - left;
-      const height = Math.max(...rowCells.map((cell) => cell.h));
-      await worker.setParameters({
-        tessedit_char_whitelist: "0123456789 ",
-        tessedit_pageseg_mode: "7",
-      });
-      const quantityTexts = await recognizeVariants(worker, [
-        prepareOcrCanvas(image, left, top, width, height * 0.24),
-        prepareOcrCanvas(image, left, top, width, height * 0.24, true),
-        prepareOcrCanvas(image, left + width * 0.04, top, width * 0.96, height * 0.2, true),
-      ]);
-      const quantityGroups = quantityTexts
-        .map((text) => extractNumbers(text))
-        .sort((leftNums, rightNums) => rightNums.length - leftNums.length);
-      rowQuantities[row] = quantityGroups.find((group) => group.length === rowCells.length) || quantityGroups[0] || [];
-
-      await worker.setParameters({
-        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzกขฃคฅฆงจฉชซฌญฎฏฐฑฒณดตถทธนบปผฝพฟภมยรลวศษสหฬอฮะาิีึืุูเแโใไ์่้๊๋ัำ -&'()",
-        tessedit_pageseg_mode: "7",
-      });
-      const nameTexts = await recognizeVariants(worker, [
-        prepareOcrCanvas(image, left, top + height * 0.68, width, height * 0.3),
-        prepareOcrCanvas(image, left, top + height * 0.68, width, height * 0.3, true),
-      ]);
-      rowNames[row] = nameTexts
-        .map((text) => parseRowNames(text, rowCells.length, catalog))
-        .find(Boolean) || null;
-    }
-  }
-
-  for (const cell of cells) {
-    const canvas = document.createElement("canvas");
-    canvas.width = 96;
-    canvas.height = 96;
-    const context = canvas.getContext("2d");
-    const iconX = cell.x + cell.w * 0.12;
-    const iconY = cell.y + cell.h * 0.18;
-    const iconW = cell.w * 0.76;
-    const iconH = cell.h * 0.52;
-    context.drawImage(image, iconX, iconY, iconW, iconH, 0, 0, 96, 96);
-    let name = rowNames[cell.row]?.[cell.col] || "";
-    let qty = rowQuantities[cell.row]?.[cell.col] || "";
-    if (worker && !qty) {
-      await worker.setParameters({
-        tessedit_char_whitelist: "0123456789",
-        tessedit_pageseg_mode: "8",
-      });
-      const quantityTexts = await recognizeVariants(worker, [
-        prepareOcrCanvas(image, cell.x + cell.w * 0.42, cell.y, cell.w * 0.56, cell.h * 0.26, true),
-        prepareOcrCanvas(image, cell.x + cell.w * 0.48, cell.y, cell.w * 0.5, cell.h * 0.22),
-      ]);
-      qty = pickQuantity(quantityTexts.flatMap(extractNumbers), "");
-    }
-    if (worker && !name) {
-      await worker.setParameters({
-        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzกขฃคฅฆงจฉชซฌญฎฏฐฑฒณดตถทธนบปผฝพฟภมยรลวศษสหฬอฮะาิีึืุูเแโใไ์่้๊๋ัำ -&'()",
-        tessedit_pageseg_mode: "7",
-      });
-      const nameTexts = await recognizeVariants(worker, [
-        prepareOcrCanvas(image, cell.x + cell.w * 0.04, cell.y + cell.h * 0.68, cell.w * 0.92, cell.h * 0.28),
-        prepareOcrCanvas(image, cell.x + cell.w * 0.04, cell.y + cell.h * 0.68, cell.w * 0.92, cell.h * 0.28, true),
-      ]);
-      name = nameTexts.map((text) => bestCatalogMatch(text, catalog)).find((value) => value.length >= 2) || "";
-    }
-    name = bestCatalogMatch(name, catalog) || `ไอเทม ${found.length + 1}`;
-    found.push({
-      id: uid(),
-      image: canvas.toDataURL("image/jpeg", 0.78),
-      name,
-      qty: pickQuantity([qty], "1"),
-      selected: true,
-    });
   }
   await worker?.terminate();
   return found;
