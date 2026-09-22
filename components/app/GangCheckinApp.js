@@ -623,11 +623,11 @@ function Payments({ gang, update }) {
   const [transactionNote, setTransactionNote] = useState("");
   const isAdmin = data.currentUser === "Admin";
   const payments = (data.payments || []).filter((payment) => payment.gangId === gang.id);
-  const amountFor = (id) => payments.filter((payment) => payment.memberId === id).reduce((sum, payment) => {
+  const amountFor = (id) => payments.filter((payment) => payment.memberId === id && payment.week === week).reduce((sum, payment) => {
     const amount = Number(payment.amount || 0);
     return sum + (payment.type === "withdrawal" ? -amount : amount);
   }, 0);
-  const gangTotal = payments.reduce((sum, payment) => {
+  const gangTotal = payments.filter((payment) => payment.week === week).reduce((sum, payment) => {
     const amount = Number(payment.amount || 0);
     return sum + (payment.type === "withdrawal" ? -amount : amount);
   }, 0);
@@ -653,7 +653,7 @@ function Payments({ gang, update }) {
           <span className={`payment-status ${complete ? "payment-complete" : ""}`}>{complete ? "ครบ 200k แล้ว" : "ยังไม่ครบ"}</span>
         </div>
         <div className={`payment-summary ${complete ? "payment-summary-complete" : ""}`}><div className="row"><span className="label">เงินทั้งหมดภายในแก็งค์</span><strong>{gangTotal.toLocaleString()} บาท</strong></div><p className="muted">ยอดเริ่มต้น 0 บาท · เปลี่ยนตามรายการฝากและถอน</p></div>
-        <label className="field"><span className="label">วันที่รายการ</span><input className="input" type="date" value={week} onChange={(e) => setWeek(e.target.value)} /></label>
+        <label className="field"><span className="label">สัปดาห์/วันที่ส่งเงิน</span><input className="input" type="date" value={week} onChange={(e) => setWeek(e.target.value)} /></label>
         <div className="form-grid"><label className="field"><span className="label">ฝากเงินเข้า</span><select className="input" value={transactionSource} onChange={(e) => setTransactionSource(e.target.value)}><option value="member">สมาชิก</option><option value="fund">กองเงินรวมของแก๊ง</option></select></label><label className="field"><span className="label">สมาชิก</span><select className="input" value={memberId} disabled={transactionSource !== "member"} onChange={(e) => setMemberId(e.target.value)}><option value="">เลือกสมาชิก</option>{gang.members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label></div>
         <div className="form-grid"><label className="field"><span className="label">ประเภทรายการ</span><select className="input" value={transactionType} onChange={(e) => setTransactionType(e.target.value)}><option value="deposit">ฝาก/ส่งเงิน (+)</option><option value="withdrawal">ถอน/เบิกเงิน (-)</option></select></label><label className="field"><span className="label">จำนวนเงิน</span><input className="input" type="number" min="0" value={transactionAmount} onChange={(e) => setTransactionAmount(e.target.value)} placeholder="จำนวนเงิน" /></label></div>
         <label className="field"><span className="label">หมายเหตุ</span><input className="input" value={transactionNote} onChange={(e) => setTransactionNote(e.target.value)} placeholder="เช่น ฝากเงินวันเสาร์ หรือ เบิกค่าใช้จ่าย" /></label>
@@ -666,7 +666,7 @@ function Payments({ gang, update }) {
       </Card>
       <Card>
         <div className="row"><h2 className="label">รายการฝาก/ถอนทั้งหมด</h2><span className="muted">{payments.length} รายการ</span></div>
-        {payments.length ? <ul className="list">{payments.slice().reverse().map((payment) => { const withdrawal = payment.type === "withdrawal"; const member = gang.members.find((item) => item.id === payment.memberId); return <li key={payment.id}><span className="grow"><strong>{withdrawal ? "ถอน/เบิกเงิน" : "ฝาก/ส่งเงิน"}{member ? ` · ${member.name}` : " · เข้ากองเงินรวม"}</strong><span className="muted payment-subtitle">{payment.week}{payment.note ? ` · ${payment.note}` : ""} · โดย {payment.user}</span></span><span className={`payment-status ${withdrawal ? "payment-withdrawal" : "payment-complete"}`}>{withdrawal ? "-" : "+"}{Number(payment.amount || 0).toLocaleString()} บาท</span></li>; })}</ul> : <p className="empty">ยังไม่มีรายการฝากหรือถอน</p>}
+        {payments.filter((payment) => payment.week === week).length ? <ul className="list">{payments.filter((payment) => payment.week === week).slice().reverse().map((payment) => { const withdrawal = payment.type === "withdrawal"; const member = gang.members.find((item) => item.id === payment.memberId); return <li key={payment.id}><span className="grow"><strong>{withdrawal ? "ถอน/เบิกเงิน" : "ฝาก/ส่งเงิน"}{member ? ` · ${member.name}` : " · เข้ากองเงินรวม"}</strong><span className="muted payment-subtitle">{payment.week}{payment.note ? ` · ${payment.note}` : ""} · โดย {payment.user}</span></span><span className={`payment-status ${withdrawal ? "payment-withdrawal" : "payment-complete"}`}>{withdrawal ? "-" : "+"}{Number(payment.amount || 0).toLocaleString()} บาท</span></li>; })}</ul> : <p className="empty">ยังไม่มีรายการฝากหรือถอนในสัปดาห์นี้</p>}
       </Card>
     </div>
   );
