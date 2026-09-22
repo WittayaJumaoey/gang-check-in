@@ -413,6 +413,8 @@ button:disabled{cursor:not-allowed;opacity:.5}
 .payment-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .payment-row-complete{background:var(--green-soft);border-radius:14px;padding:8px 12px}
 .payment-subtitle{display:block;margin-top:3px}
+.payment-history-group + .payment-history-group{margin-top:14px;padding-top:12px;border-top:2px dashed var(--line)}
+.payment-history-date{margin:0 0 4px}
 .payment-input{width:150px;font-variant-numeric:tabular-nums}
 .payment-row-complete .payment-input{border-color:var(--green-line)}
 

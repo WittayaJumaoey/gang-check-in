@@ -633,6 +633,19 @@ function Payments({ gang, update }) {
     return sum + (payment.type === "withdrawal" ? -amount : amount);
   }, 0);
   const complete = gang.members.length > 0 && gang.members.every((member) => amountFor(member.id) >= memberTarget);
+  const paymentsByDate = [...payments]
+    .sort((a, b) => {
+      const dateCmp = String(b.week || "").localeCompare(String(a.week || ""));
+      if (dateCmp) return dateCmp;
+      return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
+    })
+    .reduce((groups, payment) => {
+      const date = payment.week || "ไม่ระบุวันที่";
+      const last = groups[groups.length - 1];
+      if (last?.date === date) last.items.push(payment);
+      else groups.push({ date, items: [payment] });
+      return groups;
+    }, []);
   const addTransaction = async () => {
     const value = Number(transactionAmount);
     if ((transactionSource === "member" && !memberId) || !Number.isFinite(value) || value <= 0) return;
@@ -666,7 +679,24 @@ function Payments({ gang, update }) {
       </Card>
       <Card>
         <div className="row"><h2 className="label">รายการฝาก/ถอนทั้งหมด</h2><span className="muted">{payments.length} รายการ</span></div>
-        {payments.filter((payment) => payment.week === week).length ? <ul className="list">{payments.filter((payment) => payment.week === week).slice().reverse().map((payment) => { const withdrawal = payment.type === "withdrawal"; const member = gang.members.find((item) => item.id === payment.memberId); return <li key={payment.id}><span className="grow"><strong>{withdrawal ? "ถอน/เบิกเงิน" : "ฝาก/ส่งเงิน"}{member ? ` · ${member.name}` : " · เข้ากองเงินรวม"}</strong><span className="muted payment-subtitle">{payment.week}{payment.note ? ` · ${payment.note}` : ""} · โดย {payment.user}</span></span><span className={`payment-status ${withdrawal ? "payment-withdrawal" : "payment-complete"}`}>{withdrawal ? "-" : "+"}{Number(payment.amount || 0).toLocaleString()} บาท</span></li>; })}</ul> : <p className="empty">ยังไม่มีรายการฝากหรือถอนในสัปดาห์นี้</p>}
+        {payments.length ? paymentsByDate.map((group) => (
+          <div className="payment-history-group" key={group.date}>
+            <div className="row payment-history-date"><p className="label">{group.date}</p><span className="muted">{group.items.length} รายการ</span></div>
+            <ul className="list">{group.items.map((payment) => {
+              const withdrawal = payment.type === "withdrawal";
+              const member = gang.members.find((item) => item.id === payment.memberId);
+              return (
+                <li key={payment.id}>
+                  <span className="grow">
+                    <strong>{withdrawal ? "ถอน/เบิกเงิน" : "ฝาก/ส่งเงิน"}{member ? ` · ${member.name}` : " · เข้ากองเงินรวม"}</strong>
+                    <span className="muted payment-subtitle">{payment.note ? `${payment.note} · ` : ""}โดย {payment.user}</span>
+                  </span>
+                  <span className={`payment-status ${withdrawal ? "payment-withdrawal" : "payment-complete"}`}>{withdrawal ? "-" : "+"}{Number(payment.amount || 0).toLocaleString()} บาท</span>
+                </li>
+              );
+            })}</ul>
+          </div>
+        )) : <p className="empty">ยังไม่มีรายการฝากหรือถอน</p>}
       </Card>
     </div>
   );
