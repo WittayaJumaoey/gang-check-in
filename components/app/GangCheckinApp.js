@@ -181,6 +181,61 @@ async function cropImage(src, rect) {
   return canvas.toDataURL("image/png");
 }
 
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+function cellLooksEmpty(imageData) {
+  let sum = 0;
+  let sumSquares = 0;
+  const pixels = imageData.data.length / 4;
+  for (let index = 0; index < imageData.data.length; index += 4) {
+    const value = (imageData.data[index] + imageData.data[index + 1] + imageData.data[index + 2]) / 3;
+    sum += value;
+    sumSquares += value * value;
+  }
+  const mean = sum / pixels;
+  const variance = sumSquares / pixels - mean * mean;
+  return variance < 90 || mean < 14;
+}
+
+async function splitItemGrid(src, cols, rows) {
+  const image = await loadImage(src);
+  const columns = Math.max(1, Number(cols) || 1);
+  const rowCount = Math.max(1, Number(rows) || 1);
+  const cellWidth = image.naturalWidth / columns;
+  const cellHeight = image.naturalHeight / rowCount;
+  const pad = columns === 1 && rowCount === 1 ? 0 : 0.08;
+  const found = [];
+  for (let row = 0; row < rowCount; row += 1) {
+    for (let col = 0; col < columns; col += 1) {
+      const sourceX = cellWidth * (col + pad);
+      const sourceY = cellHeight * (row + pad);
+      const sourceW = Math.max(1, cellWidth * (1 - pad * 2));
+      const sourceH = Math.max(1, cellHeight * (1 - pad * 2));
+      const canvas = document.createElement("canvas");
+      canvas.width = 80;
+      canvas.height = 80;
+      const context = canvas.getContext("2d");
+      context.drawImage(image, sourceX, sourceY, sourceW, sourceH, 0, 0, 80, 80);
+      if (cellLooksEmpty(context.getImageData(0, 0, 80, 80))) continue;
+      found.push({
+        id: uid(),
+        image: canvas.toDataURL("image/jpeg", 0.72),
+        name: `ไอเทม ${found.length + 1}`,
+        qty: "1",
+        selected: true,
+      });
+    }
+  }
+  return found;
+}
+
 function Checkin({ gang, update }) {
   const [image, setImage] = useState(null);
   const [rect, setRect] = useState(null);
@@ -730,6 +785,13 @@ function Safe({ gang, update }) {
   const [withdrawQty, setWithdrawQty] = useState({});
   const [note, setNote] = useState("");
   const [message, setMessage] = useState("");
+  const [scanImage, setScanImage] = useState(null);
+  const [scanRect, setScanRect] = useState(null);
+  const [scanCols, setScanCols] = useState("5");
+  const [scanRows, setScanRows] = useState("4");
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scannedItems, setScannedItems] = useState([]);
+  const scanInput = useRef(null);
   useEffect(() => {
     if (!gang.members.some((member) => member.id === memberId)) {
       setMemberId(gang.members[0]?.id || "");
@@ -818,6 +880,77 @@ function Safe({ gang, update }) {
       "ลบไอเทมออกจากตู้แล้ว",
     );
   };
+  const readScanFile = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setScanImage(reader.result);
+      setScanRect(null);
+      setScannedItems([]);
+      setMessage("");
+    };
+    reader.readAsDataURL(file);
+  };
+  useEffect(() => {
+    const paste = (event) => {
+      const file = [...(event.clipboardData?.items || [])]
+        .find((item) => item.type.startsWith("image/"))
+        ?.getAsFile();
+      if (file) {
+        event.preventDefault();
+        readScanFile(file);
+      }
+    };
+    window.addEventListener("paste", paste);
+    return () => window.removeEventListener("paste", paste);
+  }, []);
+  const splitScan = async (single) => {
+    if (!scanImage) return;
+    setScanBusy(true);
+    setMessage("กำลังตัดรูปไอเทม...");
+    try {
+      const source = await cropImage(scanImage, scanRect);
+      const next = await splitItemGrid(source, single ? 1 : scanCols, single ? 1 : scanRows);
+      setScannedItems(next);
+      setMessage(next.length ? `ตัดได้ ${next.length} รูป ตรวจชื่อและจำนวนก่อนบันทึก` : "ไม่พบช่องที่มีไอเทม ลองครอบกรอบใหม่หรือลดจำนวนช่อง");
+    } catch (error) {
+      setMessage(`ตัดรูปไม่สำเร็จ: ${error.message}`);
+    } finally {
+      setScanBusy(false);
+    }
+  };
+  const saveScannedItems = async () => {
+    const picks = scannedItems.filter((item) => item.selected && item.name.trim() && Number(item.qty) > 0);
+    if (!picks.length) return;
+    let nextItems = [...items];
+    const createdAt = new Date().toISOString();
+    const nextLogs = [];
+    picks.forEach((scanned) => {
+      const qty = Number(scanned.qty);
+      const name = scanned.name.trim();
+      const existing = nextItems.find((item) => item.name.trim().toLowerCase() === name.toLowerCase());
+      if (existing) {
+        nextItems = nextItems.map((item) => item.id === existing.id
+          ? { ...item, qty: Number(item.qty) + qty, image: scanned.image || item.image }
+          : item);
+        nextLogs.push({
+          id: uid(), date, type: "in", itemId: existing.id, itemName: existing.name, quantity: qty,
+          note: note.trim() || "สแกนจากรูป", user: data.currentUser || "Admin", createdAt,
+        });
+      } else {
+        const created = { id: uid(), name, qty, image: scanned.image };
+        nextItems = [...nextItems, created];
+        nextLogs.push({
+          id: uid(), date, type: "in", itemId: created.id, itemName: created.name, quantity: qty,
+          note: note.trim() || "สแกนจากรูป", user: data.currentUser || "Admin", createdAt,
+        });
+      }
+    });
+    await saveSafe(nextItems, [...nextLogs, ...logs], `บันทึกแล้ว ✓ นำไอเทมจากสแกน ${picks.length} รายการเข้าตู้`);
+    setScanImage(null);
+    setScanRect(null);
+    setScannedItems([]);
+  };
   return (
     <div className="stack">
       <Card>
@@ -834,27 +967,109 @@ function Safe({ gang, update }) {
       </Card>
       <Card className="stack">
         <div className="row">
+          <span className="label">สแกนแคปช่องของ (วาง Ctrl+V หรืออัปโหลด)</span>
+          <span className="muted">ตัดเป็นรูปไอเทมแล้วบันทึกลงตู้</span>
+        </div>
+        {scanImage ? (
+          <>
+            <Cropper src={scanImage} rect={scanRect} onChange={setScanRect} />
+            <div className="row">
+              <button className="link-btn" onClick={() => scanInput.current?.click()}>เปลี่ยนรูป</button>
+              {!scanRect && (
+                <button className="link-btn" onClick={() => setScanRect({ x: 0, y: 0, w: 1, h: 1 })}>ใช้ทั้งรูป</button>
+              )}
+              <button className="link-btn" onClick={() => { setScanImage(null); setScanRect(null); setScannedItems([]); }}>ล้างรูป</button>
+            </div>
+            <div className="form-grid">
+              <label className="field">
+                <span className="label">จำนวนคอลัมน์</span>
+                <input className="input" type="number" min="1" max="12" value={scanCols} onChange={(e) => setScanCols(e.target.value)} />
+              </label>
+              <label className="field">
+                <span className="label">จำนวนแถว</span>
+                <input className="input" type="number" min="1" max="12" value={scanRows} onChange={(e) => setScanRows(e.target.value)} />
+              </label>
+            </div>
+          </>
+        ) : (
+          <div
+            className="dropzone"
+            onClick={() => scanInput.current?.click()}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              readScanFile(e.dataTransfer.files[0]);
+            }}
+          >
+            <div>
+              <p>คลิกเพื่อเลือกไฟล์ ลากวาง หรือกด Ctrl+V เพื่อวางภาพแคปช่องของ</p>
+              <p className="muted">ครอบเฉพาะช่องไอเทม แล้วกดตัดเป็นรูป</p>
+            </div>
+          </div>
+        )}
+        <input
+          ref={scanInput}
+          hidden
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          onChange={(e) => readScanFile(e.target.files[0])}
+        />
+        {isAdmin && (
+          <div className="row">
+            <Button disabled={!scanImage || scanBusy || !scanRect} onClick={() => splitScan(false)}>
+              {scanBusy ? message : "ตัดเป็นรูปไอเทม"}
+            </Button>
+            <button className="subtle-btn" disabled={!scanImage || scanBusy || !scanRect} onClick={() => splitScan(true)}>
+              ใช้ทั้งรูปเป็นไอเทมเดียว
+            </button>
+          </div>
+        )}
+        {scannedItems.length > 0 && (
+          <>
+            <div className="row">
+              <p className="label">รูปที่ตัดได้</p>
+              <span className="muted">คลิกรูปเพื่อไม่บันทึกช่องนั้น</span>
+            </div>
+            <div className="item-scan-grid">
+              {scannedItems.map((item) => (
+                <div className={`item-card ${item.selected ? "" : "item-card-skipped"}`} key={item.id}>
+                  <button type="button" className="item-thumb-btn" onClick={() => setScannedItems((old) => old.map((entry) => entry.id === item.id ? { ...entry, selected: !entry.selected } : entry))}>
+                    <img src={item.image} alt={item.name} />
+                  </button>
+                  <input className="input" value={item.name} onChange={(e) => setScannedItems((old) => old.map((entry) => entry.id === item.id ? { ...entry, name: e.target.value } : entry))} placeholder="ชื่อไอเทม" />
+                  <input className="input" type="number" min="1" value={item.qty} onChange={(e) => setScannedItems((old) => old.map((entry) => entry.id === item.id ? { ...entry, qty: e.target.value } : entry))} />
+                </div>
+              ))}
+            </div>
+            {isAdmin && (
+              <Button onClick={saveScannedItems} disabled={!scannedItems.some((item) => item.selected && item.name.trim() && Number(item.qty) > 0)}>
+                บันทึกไอเทมจากสแกน
+              </Button>
+            )}
+          </>
+        )}
+      </Card>
+      <Card className="stack">
+        <div className="row">
           <div>
             <p className="label">ของในตู้เซฟ</p>
             <p className="muted">มีของ {inStock.length} รายการ · หมด {emptyStock.length} รายการ</p>
           </div>
           <span className="muted">{items.length} ไอเทม</span>
         </div>
-        {inStock.length > 0 && (
-          <div className="chips">
-            {inStock.map((item) => (
-              <span className="chip present-chip" key={item.id}>{item.name} · {item.qty}</span>
+        {items.length > 0 ? (
+          <div className="item-grid">
+            {items.map((item) => (
+              <div className={`item-card ${Number(item.qty) > 0 ? "" : "item-card-empty"}`} key={item.id}>
+                {item.image ? <img src={item.image} alt={item.name} /> : <span className="item-fallback">{item.name.slice(0, 1)}</span>}
+                <strong>{item.name}</strong>
+                <span className="muted">{Number(item.qty) > 0 ? `${item.qty} ชิ้น` : "หมด"}</span>
+              </div>
             ))}
           </div>
+        ) : (
+          <p className="empty">ยังไม่มีไอเทมในตู้เซฟ</p>
         )}
-        {emptyStock.length > 0 && (
-          <div className="chips">
-            {emptyStock.map((item) => (
-              <span className="chip" key={item.id}>{item.name} · หมด</span>
-            ))}
-          </div>
-        )}
-        {!items.length && <p className="empty">ยังไม่มีไอเทมในตู้เซฟ</p>}
       </Card>
       <Card className="stack">
         <p className="label">นำของเข้าตู้</p>
@@ -890,6 +1105,7 @@ function Safe({ gang, update }) {
           <ul className="list">
             {items.map((item) => (
               <li key={item.id} className="payment-row">
+                {item.image ? <img className="item-list-thumb" src={item.image} alt="" /> : null}
                 <span className="grow">
                   <strong>{item.name}</strong>
                   <span className="muted payment-subtitle">คงเหลือ {item.qty} ชิ้น</span>

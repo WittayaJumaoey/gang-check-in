@@ -418,6 +418,29 @@ button:disabled{cursor:not-allowed;opacity:.5}
 .payment-history-date{margin:0 0 4px}
 .payment-input{width:150px;font-variant-numeric:tabular-nums}
 .safe-qty{width:88px}
+.item-grid,.item-scan-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:10px}
+.item-card{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  border:2px solid var(--line);
+  border-radius:16px;
+  background:var(--surface);
+  padding:8px;
+  text-align:center;
+}
+.item-card img,.item-fallback{
+  width:100%;
+  aspect-ratio:1;
+  object-fit:cover;
+  border-radius:12px;
+  background:var(--preview-bg);
+}
+.item-fallback{display:grid;place-items:center;color:var(--accent);font-weight:700;font-size:28px}
+.item-card-empty{opacity:.55}
+.item-card-skipped{opacity:.38;filter:grayscale(.8)}
+.item-thumb-btn{border:0;padding:0;background:transparent;border-radius:12px}
+.item-list-thumb{width:40px;height:40px;border-radius:10px;object-fit:cover;flex:none}
 .payment-row-complete .payment-input{border-color:var(--green-line)}
 
 /* ---------- Responsive ---------- */
