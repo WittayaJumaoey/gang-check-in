@@ -623,6 +623,7 @@ function Payments({ gang, update }) {
   const [transactionNote, setTransactionNote] = useState("");
   const isAdmin = data.currentUser === "Admin";
   const payments = (data.payments || []).filter((payment) => payment.gangId === gang.id);
+  const memberTarget = 200000;
   const amountFor = (id) => payments.filter((payment) => payment.memberId === id && payment.week === week).reduce((sum, payment) => {
     const amount = Number(payment.amount || 0);
     return sum + (payment.type === "withdrawal" ? -amount : amount);
@@ -631,8 +632,7 @@ function Payments({ gang, update }) {
     const amount = Number(payment.amount || 0);
     return sum + (payment.type === "withdrawal" ? -amount : amount);
   }, 0);
-  const target = gang.members.length * 200000;
-  const complete = target > 0 && gangTotal >= target;
+  const complete = gang.members.length > 0 && gang.members.every((member) => amountFor(member.id) >= memberTarget);
   const addTransaction = async () => {
     const value = Number(transactionAmount);
     if ((transactionSource === "member" && !memberId) || !Number.isFinite(value) || value <= 0) return;
@@ -661,7 +661,7 @@ function Payments({ gang, update }) {
         {!isAdmin && <p className="warning">ดูยอดเงินได้ แต่เฉพาะ Admin เท่านั้นที่แก้ไขยอดได้</p>}
       </Card>
       <Card>
-        <ul className="list">{gang.members.map((member) => { const total = amountFor(member.id); const completeMember = total >= 200000; return <li key={member.id} className={completeMember ? "payment-row payment-row-complete" : "payment-row"}><span className="grow"><strong>{member.name}</strong><span className="muted payment-subtitle">เป้าหมาย 200,000 บาท</span></span><span className={`payment-status ${completeMember ? "payment-complete" : ""}`}>{completeMember ? "ครบแล้ว" : `${total.toLocaleString()} บาท`}</span></li>; })}</ul>
+        <ul className="list">{gang.members.map((member) => { const total = amountFor(member.id); const completeMember = total >= memberTarget; return <li key={member.id} className={completeMember ? "payment-row payment-row-complete" : "payment-row"}><span className="grow"><strong>{member.name}</strong><span className="muted payment-subtitle">เป้าหมาย 200,000 บาท</span></span><span className={`payment-status ${completeMember ? "payment-complete" : ""}`}>{completeMember ? "ครบแล้ว" : `${total.toLocaleString()} บาท`}</span></li>; })}</ul>
         {!gang.members.length && <p className="empty">ยังไม่มีสมาชิกในแก๊งนี้</p>}
       </Card>
       <Card>
