@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createWorker } from "tesseract.js";
 import { Button, Card } from "../shared/ui";
 import {
   STORAGE,
@@ -212,6 +213,7 @@ async function splitItemGrid(src, cols, rows) {
   const cellHeight = image.naturalHeight / rowCount;
   const isSingle = columns === 1 && rowCount === 1;
   const found = [];
+  const worker = isSingle ? null : await createWorker("eng");
   for (let row = 0; row < rowCount; row += 1) {
     for (let col = 0; col < columns; col += 1) {
       const sourceX = cellWidth * col;
@@ -228,15 +230,33 @@ async function splitItemGrid(src, cols, rows) {
       const imageH = isSingle ? sourceH : sourceH * 0.54;
       context.drawImage(image, sourceX + imageX, sourceY + imageY, imageW, imageH, 0, 0, 80, 80);
       if (cellLooksEmpty(context.getImageData(0, 0, 80, 80))) continue;
+      let name = `ไอเทม ${found.length + 1}`;
+      let qty = "1";
+      if (worker) {
+        const textCanvas = document.createElement("canvas");
+        textCanvas.width = Math.max(240, Math.round(sourceW));
+        textCanvas.height = Math.max(240, Math.round(sourceH));
+        textCanvas.getContext("2d").drawImage(image, sourceX, sourceY, sourceW, sourceH, 0, 0, textCanvas.width, textCanvas.height);
+        const result = await worker.recognize(textCanvas.toDataURL("image/png"));
+        const lines = result.data.text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+        const quantityLine = lines.find((line) => /\b\d{1,6}\b/.test(line));
+        const quantityMatch = quantityLine?.match(/\b\d{1,6}\b/);
+        const nameLine = lines
+          .filter((line) => !/^\d[\d\s.,]*$/.test(line))
+          .sort((left, right) => right.length - left.length)[0];
+        if (quantityMatch) qty = quantityMatch[0];
+        if (nameLine && /[a-zA-Zก-๙]/.test(nameLine)) name = nameLine.replace(/\s+/g, " ").trim();
+      }
       found.push({
         id: uid(),
         image: canvas.toDataURL("image/jpeg", 0.72),
-        name: `ไอเทม ${found.length + 1}`,
-        qty: "1",
+        name,
+        qty,
         selected: true,
       });
     }
   }
+  await worker?.terminate();
   return found;
 }
 
