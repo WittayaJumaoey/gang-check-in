@@ -210,19 +210,23 @@ async function splitItemGrid(src, cols, rows) {
   const rowCount = Math.max(1, Number(rows) || 1);
   const cellWidth = image.naturalWidth / columns;
   const cellHeight = image.naturalHeight / rowCount;
-  const pad = columns === 1 && rowCount === 1 ? 0 : 0.08;
+  const isSingle = columns === 1 && rowCount === 1;
   const found = [];
   for (let row = 0; row < rowCount; row += 1) {
     for (let col = 0; col < columns; col += 1) {
-      const sourceX = cellWidth * (col + pad);
-      const sourceY = cellHeight * (row + pad);
-      const sourceW = Math.max(1, cellWidth * (1 - pad * 2));
-      const sourceH = Math.max(1, cellHeight * (1 - pad * 2));
+      const sourceX = cellWidth * col;
+      const sourceY = cellHeight * row;
+      const sourceW = Math.max(1, cellWidth);
+      const sourceH = Math.max(1, cellHeight);
       const canvas = document.createElement("canvas");
       canvas.width = 80;
       canvas.height = 80;
       const context = canvas.getContext("2d");
-      context.drawImage(image, sourceX, sourceY, sourceW, sourceH, 0, 0, 80, 80);
+      const imageX = isSingle ? 0 : sourceW * 0.08;
+      const imageY = isSingle ? 0 : sourceH * 0.16;
+      const imageW = isSingle ? sourceW : sourceW * 0.84;
+      const imageH = isSingle ? sourceH : sourceH * 0.54;
+      context.drawImage(image, sourceX + imageX, sourceY + imageY, imageW, imageH, 0, 0, 80, 80);
       if (cellLooksEmpty(context.getImageData(0, 0, 80, 80))) continue;
       found.push({
         id: uid(),
@@ -787,8 +791,8 @@ function Safe({ gang, update }) {
   const [message, setMessage] = useState("");
   const [scanImage, setScanImage] = useState(null);
   const [scanRect, setScanRect] = useState(null);
-  const [scanCols, setScanCols] = useState("5");
-  const [scanRows, setScanRows] = useState("4");
+  const [scanCols, setScanCols] = useState("6");
+  const [scanRows, setScanRows] = useState("3");
   const [scanBusy, setScanBusy] = useState(false);
   const [scannedItems, setScannedItems] = useState([]);
   const scanInput = useRef(null);
