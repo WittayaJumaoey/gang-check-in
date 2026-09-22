@@ -194,26 +194,181 @@ function loadImage(src) {
   });
 }
 
-const STORAGE_CATALOG = [
-  "เงินดำ", "Aed", "Armor", "BLACK COIN", "Cement", "Copper",
-  "Diamond", "EXP", "Gold", "Happy Box", "Painkiller", "Painkiller Pack",
-  "Plier", "Steel", "Stone", "Vibranium Scrap", "Weapon Box", "Wood log",
+const STORAGE_ITEMS = [
+  { name: "เงินดำ", aliases: ["เงินด่า", "เงินดา"] },
+  { name: "Aed", aliases: ["acd", "aod", "aeo"] },
+  { name: "Armor", aliases: [] },
+  { name: "BLACK COIN", aliases: ["blackcoln", "blackcoln", "tw ved oi", "tw ved"] },
+  { name: "Cement", aliases: [] },
+  { name: "Copper", aliases: ["cooper", "coper"] },
+  { name: "Diamond", aliases: [] },
+  { name: "EXP", aliases: ["ex p"] },
+  { name: "Gold", aliases: ["goid", "had"] },
+  { name: "Happy Box", aliases: ["happybox"] },
+  { name: "Painkiller", aliases: [] },
+  { name: "Painkiller Pack", aliases: ["painkiller p", "piankiller pack", "painkillerpack"] },
+  { name: "Plier", aliases: ["pliers"] },
+  { name: "Steel", aliases: ["stael", "steal"] },
+  { name: "Stone", aliases: ["stome", "neo"] },
+  { name: "Vibranium Scrap", aliases: ["vibranium", "vibraniums"] },
+  { name: "Weapon Box", aliases: ["weapon bx", "weapon br", "weaponbox"] },
+  { name: "Wood log", aliases: ["woodlog", "wood log"] },
 ];
 
-function prepareOcrCanvas(image, x, y, width, height, invert = false) {
+function buildItemCatalog(extraNames = []) {
+  const catalog = [...STORAGE_ITEMS];
+  extraNames.filter(Boolean).forEach((name) => {
+    if (!catalog.some((item) => item.name.toLowerCase() === String(name).toLowerCase())) {
+      catalog.push({ name, aliases: [] });
+    }
+  });
+  return catalog.sort((left, right) => right.name.length - left.name.length);
+}
+
+function smoothProfile(values, radius = 4) {
+  return values.map((_, index) => {
+    let sum = 0;
+    let count = 0;
+    for (let offset = -radius; offset <= radius; offset += 1) {
+      const value = values[index + offset];
+      if (value == null) continue;
+      sum += value;
+      count += 1;
+    }
+    return count ? sum / count : 0;
+  });
+}
+
+function findContentBands(profile) {
+  const peak = Math.max(...profile, 1);
+  const mean = profile.reduce((sum, value) => sum + value, 0) / profile.length;
+  const threshold = Math.max(peak * 0.18, mean * 0.72);
+  const bands = [];
+  let start = -1;
+  profile.forEach((value, index) => {
+    if (value >= threshold) {
+      if (start < 0) start = index;
+    } else if (start >= 0) {
+      bands.push({ start, end: index });
+      start = -1;
+    }
+  });
+  if (start >= 0) bands.push({ start, end: profile.length });
+  const merged = [];
+  const gap = Math.max(4, Math.round(profile.length * 0.012));
+  bands.forEach((band) => {
+    const last = merged[merged.length - 1];
+    if (last && band.start - last.end <= gap) last.end = band.end;
+    else merged.push({ ...band });
+  });
+  if (merged.length < 2) return merged;
+  const sizes = merged.map((band) => band.end - band.start).sort((left, right) => left - right);
+  const median = sizes[Math.floor(sizes.length / 2)] || 1;
+  return merged.filter((band) => {
+    const size = band.end - band.start;
+    return size >= median * 0.45 && size <= median * 1.7;
+  });
+}
+
+function axisScore(pixels, width, height, vertical) {
+  const length = vertical ? width : height;
+  const scores = new Array(length).fill(0);
+  for (let axis = 0; axis < length; axis += 1) {
+    let sum = 0;
+    let sumSquares = 0;
+    let edges = 0;
+    const span = vertical ? height : width;
+    let previous = 0;
+    for (let step = 0; step < span; step += 1) {
+      const x = vertical ? axis : step;
+      const y = vertical ? step : axis;
+      const index = (y * width + x) * 4;
+      const gray = pixels[index] * 0.299 + pixels[index + 1] * 0.587 + pixels[index + 2] * 0.114;
+      sum += gray;
+      sumSquares += gray * gray;
+      edges += Math.abs(gray - previous);
+      previous = gray;
+    }
+    const mean = sum / span;
+    scores[axis] = (sumSquares / span - mean * mean) + edges / span;
+  }
+  return smoothProfile(scores);
+}
+
+function detectInventoryGrid(image) {
+  const width = image.naturalWidth || image.width;
+  const height = image.naturalHeight || image.height;
   const canvas = document.createElement("canvas");
-  canvas.width = 960;
-  canvas.height = 240;
+  canvas.width = width;
+  canvas.height = height;
   const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.drawImage(image, 0, 0);
+  const pixels = context.getImageData(0, 0, width, height).data;
+  const columns = findContentBands(axisScore(pixels, width, height, true));
+  const rows = findContentBands(axisScore(pixels, width, height, false));
+  if (columns.length < 2 || rows.length < 1) return null;
+  const cells = [];
+  rows.forEach((row, rowIndex) => {
+    columns.forEach((column, colIndex) => {
+      cells.push({
+        x: column.start,
+        y: row.start,
+        w: column.end - column.start,
+        h: row.end - row.start,
+        row: rowIndex,
+        col: colIndex,
+      });
+    });
+  });
+  return { columns: columns.length, rows: rows.length, cells };
+}
+
+function uniformCells(image, columns, rowCount) {
+  const width = image.naturalWidth || image.width;
+  const height = image.naturalHeight || image.height;
+  const cellWidth = width / columns;
+  const cellHeight = height / rowCount;
+  const cells = [];
+  for (let row = 0; row < rowCount; row += 1) {
+    for (let col = 0; col < columns; col += 1) {
+      cells.push({
+        x: cellWidth * col,
+        y: cellHeight * row,
+        w: cellWidth,
+        h: cellHeight,
+        row,
+        col,
+      });
+    }
+  }
+  return cells;
+}
+
+function prepareOcrCanvas(image, x, y, width, height, invert = false) {
+  const scale = Math.max(3.2, 88 / Math.max(1, height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(12, Math.round(width * scale));
+  canvas.height = Math.max(24, Math.round(height * scale));
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.imageSmoothingEnabled = true;
   context.drawImage(image, x, y, width, height, 0, 0, canvas.width, canvas.height);
   const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+  let min = 255;
+  let max = 0;
   for (let index = 0; index < pixels.data.length; index += 4) {
-    const gray = (pixels.data[index] * 0.299) + (pixels.data[index + 1] * 0.587) + (pixels.data[index + 2] * 0.114);
-    const value = invert ? 255 - gray : gray;
-    const threshold = value > 110 ? 255 : 0;
-    pixels.data[index] = threshold;
-    pixels.data[index + 1] = threshold;
-    pixels.data[index + 2] = threshold;
+    const gray = pixels.data[index] * 0.299 + pixels.data[index + 1] * 0.587 + pixels.data[index + 2] * 0.114;
+    min = Math.min(min, gray);
+    max = Math.max(max, gray);
+  }
+  const range = Math.max(1, max - min);
+  for (let index = 0; index < pixels.data.length; index += 4) {
+    const gray = pixels.data[index] * 0.299 + pixels.data[index + 1] * 0.587 + pixels.data[index + 2] * 0.114;
+    const stretched = ((gray - min) / range) * 255;
+    const source = invert ? 255 - stretched : stretched;
+    const value = source > 132 ? 255 : 0;
+    pixels.data[index] = value;
+    pixels.data[index + 1] = value;
+    pixels.data[index + 2] = value;
   }
   context.putImageData(pixels, 0, 0);
   return canvas;
@@ -226,95 +381,178 @@ function cleanOcrName(value) {
     .trim();
 }
 
-function extractDigitCandidates(value) {
-  return value
-    .split(/\s+/)
-    .map((part) => part.replace(/[^0-9]/g, ""))
-    .filter((part) => part.length > 0 && part.length <= 7)
-    .sort((left, right) => right.length - left.length);
+function extractNumbers(value) {
+  return (String(value || "").match(/\d{1,6}/g) || []).filter((part) => Number(part) >= 0);
 }
 
-async function splitItemGrid(src, cols, rows) {
-  const image = await loadImage(src);
-  const columns = Math.max(1, Number(cols) || 1);
-  const rowCount = Math.max(1, Number(rows) || 1);
-  const cellWidth = image.naturalWidth / columns;
-  const cellHeight = image.naturalHeight / rowCount;
-  const isSingle = columns === 1 && rowCount === 1;
-  const isStorageGrid = columns === 6 && rowCount === 3;
-  const found = [];
-  const worker = isSingle ? null : await createWorker("eng");
-  if (worker) await worker.setParameters({ tessedit_pageseg_mode: "7" });
-  for (let row = 0; row < rowCount; row += 1) {
-    for (let col = 0; col < columns; col += 1) {
-      const sourceX = cellWidth * col;
-      const sourceY = cellHeight * row;
-      const sourceW = Math.max(1, cellWidth);
-      const sourceH = Math.max(1, cellHeight);
-      const canvas = document.createElement("canvas");
-      canvas.width = 80;
-      canvas.height = 80;
-      const context = canvas.getContext("2d");
-      const imageX = isSingle ? 0 : sourceW * 0.08;
-      const imageY = isSingle ? 0 : sourceH * 0.16;
-      const imageW = isSingle ? sourceW : sourceW * 0.84;
-      const imageH = isSingle ? sourceH : sourceH * 0.54;
-      context.drawImage(image, sourceX + imageX, sourceY + imageY, imageW, imageH, 0, 0, 80, 80);
-      const slot = row * columns + col;
-      let name = isStorageGrid ? STORAGE_CATALOG[slot] : `ไอเทม ${slot + 1}`;
-      let qty = "1";
-      if (worker && !isSingle) {
-        await worker.setParameters({
-          tessedit_char_whitelist: "0123456789",
-          tessedit_pageseg_mode: "7",
-        });
-        const quantityCanvases = [
-          prepareOcrCanvas(image, sourceX + sourceW * 0.03, sourceY, sourceW * 0.94, sourceH * 0.24),
-          prepareOcrCanvas(image, sourceX, sourceY, sourceW, sourceH * 0.34, true),
-          prepareOcrCanvas(image, sourceX + sourceW * 0.12, sourceY, sourceW * 0.88, sourceH * 0.28),
-        ];
-        const quantityCandidates = [];
-        for (const quantityCanvas of quantityCanvases) {
-          const result = await worker.recognize(quantityCanvas.toDataURL("image/png"));
-          quantityCandidates.push(...extractDigitCandidates(result.data.text));
-        }
-        const bestQuantity = quantityCandidates
-          .filter((value) => Number(value) >= 0)
-          .sort((left, right) => {
-            const leftValue = Number(left);
-            const rightValue = Number(right);
-            if (left.length !== right.length) return right.length - left.length;
-            return rightValue - leftValue;
-          })[0];
-        if (bestQuantity) qty = bestQuantity;
-
-        await worker.setParameters({
-          tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789กขฃคฆงจฉชซฌญฎฏฐฑฒณดตถทธนบปผฝพฟภมยรลวศษสหฬอฮะาำิีึืุูเแโใไ์่้๊๋ัะ0123456789 -&'()_",
-          tessedit_pageseg_mode: "7",
-        });
-        const nameCanvas = prepareOcrCanvas(
-          image,
-          sourceX + sourceW * 0.04,
-          sourceY + sourceH * 0.58,
-          sourceW * 0.92,
-          sourceH * 0.27,
-        );
-        const nameResult = await worker.recognize(nameCanvas.toDataURL("image/png"));
-        const detectedName = cleanOcrName(nameResult.data.text);
-        if (
-          detectedName &&
-          /[a-zA-Zก-๙]/.test(detectedName) &&
-          nameResult.data.confidence >= 45
-        ) name = detectedName;
+function bestCatalogMatch(text, catalog) {
+  const raw = cleanOcrName(text);
+  if (!raw) return "";
+  const key = keyOf(raw);
+  let best = { name: raw, score: 0 };
+  catalog.forEach((item) => {
+    [item.name, ...(item.aliases || [])].forEach((candidate) => {
+      const candidateKey = keyOf(candidate);
+      let score = similarity(key, candidateKey);
+      if (key && candidateKey.startsWith(key) && key.length >= 3) score = Math.max(score, 0.9);
+      if (key && candidateKey.includes(key) && key.length >= 5) score = Math.max(score, 0.88);
+      if (key && key.startsWith(candidateKey) && candidateKey.length >= 4) score = Math.max(score, 0.84);
+      if (score > best.score || (Math.abs(score - best.score) < 0.02 && item.name.length > best.name.length)) {
+        best = { name: item.name, score };
       }
-      found.push({
-        id: uid(),
-        image: canvas.toDataURL("image/jpeg", 0.72),
-        name,
-        qty,
-        selected: true,
-      });
+    });
+  });
+  return best.score >= 0.56 ? best.name : raw;
+}
+
+function parseRowNames(text, count, catalog) {
+  const haystack = cleanOcrName(text);
+  if (!haystack) return null;
+  const hits = [];
+  catalog.forEach((item) => {
+    [item.name, ...(item.aliases || [])].forEach((alias) => {
+      const aliasKey = keyOf(alias);
+      const hayKey = keyOf(haystack);
+      if (!aliasKey) return;
+      const index = hayKey.indexOf(aliasKey);
+      if (index < 0) return;
+      hits.push({ name: item.name, index, length: aliasKey.length });
+    });
+  });
+  hits.sort((left, right) => left.index - right.index || right.length - left.length);
+  const chosen = [];
+  let cursor = -1;
+  hits.forEach((hit) => {
+    if (hit.index < cursor) return;
+    if (chosen.some((item) => item.name === hit.name)) return;
+    chosen.push(hit);
+    cursor = hit.index + Math.max(2, hit.length - 1);
+  });
+  if (chosen.length === count) return chosen.map((item) => item.name);
+  const parts = haystack.split(/\s{2,}|\n+/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length === count) return parts.map((part) => bestCatalogMatch(part, catalog));
+  const spaced = haystack.split(" ").filter(Boolean);
+  if (spaced.length === count) return spaced.map((part) => bestCatalogMatch(part, catalog));
+  return null;
+}
+
+function pickQuantity(candidates, fallback = "1") {
+  const ranked = [...new Set(candidates.filter((value) => Number(value) >= 0 && Number(value) <= 999999))]
+    .sort((left, right) => {
+      if (left.length !== right.length) return right.length - left.length;
+      return Number(right) - Number(left);
+    });
+  return ranked[0] || fallback;
+}
+
+async function recognizeVariants(worker, canvases) {
+  const texts = [];
+  for (const canvas of canvases) {
+    const result = await worker.recognize(canvas.toDataURL("image/png"));
+    texts.push(result.data.text || "");
+  }
+  return texts;
+}
+
+async function splitItemGrid(src, cols, rows, extraNames = []) {
+  const image = await loadImage(src);
+  const isSingle = Number(cols) === 1 && Number(rows) === 1;
+  const detected = isSingle ? null : detectInventoryGrid(image);
+  const columns = isSingle ? 1 : detected?.columns || Math.max(1, Number(cols) || 1);
+  const rowCount = isSingle ? 1 : detected?.rows || Math.max(1, Number(rows) || 1);
+  const cells = isSingle
+    ? [{ x: 0, y: 0, w: image.naturalWidth, h: image.naturalHeight, row: 0, col: 0 }]
+    : detected?.cells || uniformCells(image, columns, rowCount);
+  const catalog = buildItemCatalog(extraNames);
+  const found = [];
+  let worker = null;
+  if (!isSingle) {
+    try {
+      worker = await createWorker(["eng", "tha"]);
+    } catch {
+      worker = await createWorker("eng");
     }
+  }
+  const rowNames = [];
+  const rowQuantities = [];
+  if (worker) {
+    for (let row = 0; row < rowCount; row += 1) {
+      const rowCells = cells.filter((cell) => cell.row === row).sort((left, right) => left.col - right.col);
+      if (!rowCells.length) continue;
+      const left = rowCells[0].x;
+      const top = Math.min(...rowCells.map((cell) => cell.y));
+      const width = rowCells[rowCells.length - 1].x + rowCells[rowCells.length - 1].w - left;
+      const height = Math.max(...rowCells.map((cell) => cell.h));
+      await worker.setParameters({
+        tessedit_char_whitelist: "0123456789 ",
+        tessedit_pageseg_mode: "7",
+      });
+      const quantityTexts = await recognizeVariants(worker, [
+        prepareOcrCanvas(image, left, top, width, height * 0.24),
+        prepareOcrCanvas(image, left, top, width, height * 0.24, true),
+        prepareOcrCanvas(image, left + width * 0.04, top, width * 0.96, height * 0.2, true),
+      ]);
+      const quantityGroups = quantityTexts
+        .map((text) => extractNumbers(text))
+        .sort((leftNums, rightNums) => rightNums.length - leftNums.length);
+      rowQuantities[row] = quantityGroups.find((group) => group.length === rowCells.length) || quantityGroups[0] || [];
+
+      await worker.setParameters({
+        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzกขฃคฅฆงจฉชซฌญฎฏฐฑฒณดตถทธนบปผฝพฟภมยรลวศษสหฬอฮะาิีึืุูเแโใไ์่้๊๋ัำ -&'()",
+        tessedit_pageseg_mode: "7",
+      });
+      const nameTexts = await recognizeVariants(worker, [
+        prepareOcrCanvas(image, left, top + height * 0.68, width, height * 0.3),
+        prepareOcrCanvas(image, left, top + height * 0.68, width, height * 0.3, true),
+      ]);
+      rowNames[row] = nameTexts
+        .map((text) => parseRowNames(text, rowCells.length, catalog))
+        .find(Boolean) || null;
+    }
+  }
+
+  for (const cell of cells) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 96;
+    canvas.height = 96;
+    const context = canvas.getContext("2d");
+    const iconX = cell.x + cell.w * 0.12;
+    const iconY = cell.y + cell.h * 0.18;
+    const iconW = cell.w * 0.76;
+    const iconH = cell.h * 0.52;
+    context.drawImage(image, iconX, iconY, iconW, iconH, 0, 0, 96, 96);
+    let name = rowNames[cell.row]?.[cell.col] || "";
+    let qty = rowQuantities[cell.row]?.[cell.col] || "";
+    if (worker && !qty) {
+      await worker.setParameters({
+        tessedit_char_whitelist: "0123456789",
+        tessedit_pageseg_mode: "8",
+      });
+      const quantityTexts = await recognizeVariants(worker, [
+        prepareOcrCanvas(image, cell.x + cell.w * 0.42, cell.y, cell.w * 0.56, cell.h * 0.26, true),
+        prepareOcrCanvas(image, cell.x + cell.w * 0.48, cell.y, cell.w * 0.5, cell.h * 0.22),
+      ]);
+      qty = pickQuantity(quantityTexts.flatMap(extractNumbers), "");
+    }
+    if (worker && !name) {
+      await worker.setParameters({
+        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzกขฃคฅฆงจฉชซฌญฎฏฐฑฒณดตถทธนบปผฝพฟภมยรลวศษสหฬอฮะาิีึืุูเแโใไ์่้๊๋ัำ -&'()",
+        tessedit_pageseg_mode: "7",
+      });
+      const nameTexts = await recognizeVariants(worker, [
+        prepareOcrCanvas(image, cell.x + cell.w * 0.04, cell.y + cell.h * 0.68, cell.w * 0.92, cell.h * 0.28),
+        prepareOcrCanvas(image, cell.x + cell.w * 0.04, cell.y + cell.h * 0.68, cell.w * 0.92, cell.h * 0.28, true),
+      ]);
+      name = nameTexts.map((text) => bestCatalogMatch(text, catalog)).find((value) => value.length >= 2) || "";
+    }
+    name = bestCatalogMatch(name, catalog) || `ไอเทม ${found.length + 1}`;
+    found.push({
+      id: uid(),
+      image: canvas.toDataURL("image/jpeg", 0.78),
+      name,
+      qty: pickQuantity([qty], "1"),
+      selected: true,
+    });
   }
   await worker?.terminate();
   return found;
@@ -994,9 +1232,9 @@ function Safe({ gang, update }) {
     setMessage("กำลังตัดรูปไอเทม...");
     try {
       const source = await cropImage(scanImage, scanRect);
-      const next = await splitItemGrid(source, single ? 1 : scanCols, single ? 1 : scanRows);
+      const next = await splitItemGrid(source, single ? 1 : scanCols, single ? 1 : scanRows, items.map((item) => item.name));
       setScannedItems(next);
-      setMessage(next.length ? `ตัดได้ ${next.length} รูป ตรวจชื่อและจำนวนก่อนบันทึก` : "ไม่พบช่องที่มีไอเทม ลองครอบกรอบใหม่หรือลดจำนวนช่อง");
+      setMessage(next.length ? `ตัดได้ ${next.length} ช่อง ระบบจับชื่อและจำนวนให้อัตโนมัติ กรุณาตรวจอีกครั้งก่อนบันทึก` : "ไม่พบช่องที่มีไอเทม ลองครอบเฉพาะช่องของในตู้");
     } catch (error) {
       setMessage(`ตัดรูปไม่สำเร็จ: ${error.message}`);
     } finally {
@@ -1052,7 +1290,7 @@ function Safe({ gang, update }) {
       <Card className="stack">
         <div className="row">
           <span className="label">สแกนแคปช่องของ (วาง Ctrl+V หรืออัปโหลด)</span>
-          <span className="muted">ตัดเป็นรูปไอเทมแล้วบันทึกลงตู้</span>
+          <span className="muted">ครอบเฉพาะช่องของในตู้ ระบบจะจับช่อง ชื่อ และจำนวนให้อัตโนมัติ</span>
         </div>
         {scanImage ? (
           <>
@@ -1066,11 +1304,11 @@ function Safe({ gang, update }) {
             </div>
             <div className="form-grid">
               <label className="field">
-                <span className="label">จำนวนคอลัมน์</span>
+                <span className="label">คอลัมน์สำรอง</span>
                 <input className="input" type="number" min="1" max="50" value={scanCols} onChange={(e) => setScanCols(e.target.value)} />
               </label>
               <label className="field">
-                <span className="label">จำนวนแถว</span>
+                <span className="label">แถวสำรอง</span>
                 <input className="input" type="number" min="1" max="50" value={scanRows} onChange={(e) => setScanRows(e.target.value)} />
               </label>
             </div>

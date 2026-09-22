@@ -1,3 +1,6 @@
+-- รันทั้งไฟล์นี้ใน Supabase → SQL Editor
+-- ตาราง safe_items / safe_logs เก็บของในตู้เซฟแยกจาก gangs เพื่อไม่หายตอนรีเว็บ
+
 create table if not exists public.gang_state (
   id text primary key default 'shared',
   gangs jsonb not null default '[]'::jsonb,
@@ -47,6 +50,7 @@ alter table public.safe_items enable row level security;
 
 drop policy if exists "Anyone can read shared safe items" on public.safe_items;
 drop policy if exists "Anyone can insert shared safe items" on public.safe_items;
+drop policy if exists "Anyone can update shared safe items" on public.safe_items;
 drop policy if exists "Anyone can delete shared safe items" on public.safe_items;
 
 create policy "Anyone can read shared safe items"
@@ -57,6 +61,12 @@ create policy "Anyone can read shared safe items"
 create policy "Anyone can insert shared safe items"
   on public.safe_items for insert
   to anon, authenticated
+  with check (scope = 'shared');
+
+create policy "Anyone can update shared safe items"
+  on public.safe_items for update
+  to anon, authenticated
+  using (scope = 'shared')
   with check (scope = 'shared');
 
 create policy "Anyone can delete shared safe items"
@@ -84,6 +94,7 @@ alter table public.safe_logs enable row level security;
 
 drop policy if exists "Anyone can read shared safe logs" on public.safe_logs;
 drop policy if exists "Anyone can insert shared safe logs" on public.safe_logs;
+drop policy if exists "Anyone can update shared safe logs" on public.safe_logs;
 drop policy if exists "Anyone can delete shared safe logs" on public.safe_logs;
 
 create policy "Anyone can read shared safe logs"
@@ -94,6 +105,12 @@ create policy "Anyone can read shared safe logs"
 create policy "Anyone can insert shared safe logs"
   on public.safe_logs for insert
   to anon, authenticated
+  with check (scope = 'shared');
+
+create policy "Anyone can update shared safe logs"
+  on public.safe_logs for update
+  to anon, authenticated
+  using (scope = 'shared')
   with check (scope = 'shared');
 
 create policy "Anyone can delete shared safe logs"
