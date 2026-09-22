@@ -628,7 +628,7 @@ function Payments({ gang, update }) {
     const amount = Number(payment.amount || 0);
     return sum + (payment.type === "withdrawal" ? -amount : amount);
   }, 0);
-  const gangTotal = payments.filter((payment) => payment.week === week).reduce((sum, payment) => {
+  const gangTotal = payments.reduce((sum, payment) => {
     const amount = Number(payment.amount || 0);
     return sum + (payment.type === "withdrawal" ? -amount : amount);
   }, 0);
@@ -652,7 +652,7 @@ function Payments({ gang, update }) {
           <div><p className="label">ยอดส่งเงินรายสมาชิก</p><p className="muted">สมาชิกแต่ละคนต้องส่งให้ครบ 200,000 บาท</p></div>
           <span className={`payment-status ${complete ? "payment-complete" : ""}`}>{complete ? "ครบ 200k แล้ว" : "ยังไม่ครบ"}</span>
         </div>
-        <div className={`payment-summary ${complete ? "payment-summary-complete" : ""}`}><div className="row"><span className="label">เงินทั้งหมดภายในแก็งค์</span><strong>{gangTotal.toLocaleString()} บาท</strong></div><p className="muted">ยอดเริ่มต้น 0 บาท · เปลี่ยนตามรายการฝากและถอน</p></div>
+        <div className={`payment-summary ${complete ? "payment-summary-complete" : ""}`}><div className="row"><span className="label">เงินทั้งหมดภายในแก็งค์</span><strong>{gangTotal.toLocaleString()} บาท</strong></div><p className="muted">รวมทุกรายการฝากและถอนทุกสัปดาห์ ไม่รีเซ็ตเมื่อเปลี่ยนอาทิตย์</p></div>
         <label className="field"><span className="label">สัปดาห์/วันที่ส่งเงิน</span><input className="input" type="date" value={week} onChange={(e) => setWeek(e.target.value)} /></label>
         <div className="form-grid"><label className="field"><span className="label">ฝากเงินเข้า</span><select className="input" value={transactionSource} onChange={(e) => setTransactionSource(e.target.value)}><option value="member">สมาชิก</option><option value="fund">กองเงินรวมของแก๊ง</option></select></label><label className="field"><span className="label">สมาชิก</span><select className="input" value={memberId} disabled={transactionSource !== "member"} onChange={(e) => setMemberId(e.target.value)}><option value="">เลือกสมาชิก</option>{gang.members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label></div>
         <div className="form-grid"><label className="field"><span className="label">ประเภทรายการ</span><select className="input" value={transactionType} onChange={(e) => setTransactionType(e.target.value)}><option value="deposit">ฝาก/ส่งเงิน (+)</option><option value="withdrawal">ถอน/เบิกเงิน (-)</option></select></label><label className="field"><span className="label">จำนวนเงิน</span><input className="input" type="number" min="0" value={transactionAmount} onChange={(e) => setTransactionAmount(e.target.value)} placeholder="จำนวนเงิน" /></label></div>
