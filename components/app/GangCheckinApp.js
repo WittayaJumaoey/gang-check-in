@@ -163,9 +163,12 @@ async function cropImage(src, rect) {
     img.onerror = reject;
     img.src = src;
   });
+  const cropWidth = Math.max(1, image.naturalWidth * rect.w);
+  const cropHeight = Math.max(1, image.naturalHeight * rect.h);
+  const scale = Math.min(2, 2400 / Math.max(cropWidth, cropHeight));
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, image.naturalWidth * rect.w * 2);
-  canvas.height = Math.max(1, image.naturalHeight * rect.h * 2);
+  canvas.width = Math.max(1, Math.round(cropWidth * scale));
+  canvas.height = Math.max(1, Math.round(cropHeight * scale));
   canvas
     .getContext("2d")
     .drawImage(
@@ -192,10 +195,29 @@ function loadImage(src) {
 }
 
 const STORAGE_CATALOG = [
-  ["เงินสด", 597], ["Aed", 112], ["Armor", 162], ["BLACK COIN", 40], ["Cement", 6], ["Copper", 1001],
-  ["Diamond", 96], ["EXP", 1700], ["Gold", 391], ["Happy Box", 40], ["Painkiller", 108], ["Painkiller Pack", 3],
-  ["Plier", 1], ["Steel", 1600], ["Stone", 1703], ["Vibranium Scrap", 1], ["Weapon Box", 26], ["Wood log", 200],
+  "เงินสด", "Aed", "Armor", "BLACK COIN", "Cement", "Copper",
+  "Diamond", "EXP", "Gold", "Happy Box", "Painkiller", "Painkiller Pack",
+  "Plier", "Steel", "Stone", "Vibranium Scrap", "Weapon Box", "Wood log",
 ];
+
+function prepareOcrCanvas(image, x, y, width, height, invert = false) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 480;
+  canvas.height = 180;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.drawImage(image, x, y, width, height, 0, 0, canvas.width, canvas.height);
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+  for (let index = 0; index < pixels.data.length; index += 4) {
+    const gray = (pixels.data[index] * 0.299) + (pixels.data[index + 1] * 0.587) + (pixels.data[index + 2] * 0.114);
+    const value = invert ? 255 - gray : gray;
+    const threshold = value > 110 ? 255 : 0;
+    pixels.data[index] = threshold;
+    pixels.data[index + 1] = threshold;
+    pixels.data[index + 2] = threshold;
+  }
+  context.putImageData(pixels, 0, 0);
+  return canvas;
+}
 
 async function splitItemGrid(src, cols, rows) {
   const image = await loadImage(src);
@@ -229,26 +251,19 @@ async function splitItemGrid(src, cols, rows) {
       const imageH = isSingle ? sourceH : sourceH * 0.54;
       context.drawImage(image, sourceX + imageX, sourceY + imageY, imageW, imageH, 0, 0, 80, 80);
       const slot = row * columns + col;
-      let name = isStorageGrid ? STORAGE_CATALOG[slot][0] : `ไอเทม ${slot + 1}`;
-      let qty = isStorageGrid ? String(STORAGE_CATALOG[slot][1]) : "1";
+      name = isStorageGrid ? STORAGE_CATALOG[slot] : `ไอเทม ${slot + 1}`;
+      let qty = "1";
       if (worker && !isSingle) {
-        const quantityCanvas = document.createElement("canvas");
-        quantityCanvas.width = 240;
-        quantityCanvas.height = 120;
-        quantityCanvas.getContext("2d").drawImage(
+        const ocrCanvas = prepareOcrCanvas(
           image,
-          sourceX + sourceW * 0.5,
+          sourceX + sourceW * 0.42,
           sourceY,
-          sourceW * 0.5,
-          sourceH * 0.22,
-          0,
-          0,
-          quantityCanvas.width,
-          quantityCanvas.height,
+          sourceW * 0.58,
+          sourceH * 0.25,
         );
-        const result = await worker.recognize(quantityCanvas.toDataURL("image/png"));
-        const quantityMatch = result.data.text.replace(/[^0-9]/g, "").match(/\d{1,6}/);
-        if (quantityMatch) qty = quantityMatch[0];
+        const result = await worker.recognize(ocrCanvas.toDataURL("image/png"));
+        const digits = result.data.text.replace(/[^0-9]/g, "").match(/\d{1,6}/);
+        if (digits) qty = digits[0];
       }
       found.push({
         id: uid(),
@@ -1010,11 +1025,11 @@ function Safe({ gang, update }) {
             <div className="form-grid">
               <label className="field">
                 <span className="label">จำนวนคอลัมน์</span>
-                <input className="input" type="number" min="1" max="12" value={scanCols} onChange={(e) => setScanCols(e.target.value)} />
+                <input className="input" type="number" min="1" max="50" value={scanCols} onChange={(e) => setScanCols(e.target.value)} />
               </label>
               <label className="field">
                 <span className="label">จำนวนแถว</span>
-                <input className="input" type="number" min="1" max="12" value={scanRows} onChange={(e) => setScanRows(e.target.value)} />
+                <input className="input" type="number" min="1" max="50" value={scanRows} onChange={(e) => setScanRows(e.target.value)} />
               </label>
             </div>
           </>
