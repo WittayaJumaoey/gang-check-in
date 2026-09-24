@@ -937,6 +937,7 @@ function History({ gang, refresh }) {
 
 function Payments({ gang, update }) {
   const data = readLocalStore();
+  const [safeItems, setSafeItems] = useState(gang.safeItems || []);
   const [week, setWeek] = useState(today());
   const [transactionSource, setTransactionSource] = useState("member");
   const [memberId, setMemberId] = useState(gang.members[0]?.id || "");
@@ -946,6 +947,11 @@ function Payments({ gang, update }) {
   const [itemQuantities, setItemQuantities] = useState({});
   const isAdmin = data.currentUser === "Admin";
   const payments = (data.payments || []).filter((payment) => payment.gangId === gang.id);
+  useEffect(() => {
+    const latest = readLocalStore();
+    const latestGang = (latest.gangs || []).find((entry) => entry.id === gang.id);
+    setSafeItems(latestGang?.safeItems || gang.safeItems || []);
+  }, [gang.id, gang.safeItems]);
   const memberTarget = 200000;
   const amountFor = (id) => payments.filter((payment) => payment.memberId === id && payment.week === week).reduce((sum, payment) => {
     const amount = Number(payment.amount || 0);
@@ -970,8 +976,11 @@ function Payments({ gang, update }) {
       return groups;
     }, []);
   const addTransaction = async () => {
+      const latestData = readLocalStore();
+      const latestGang = (latestData.gangs || []).find((entry) => entry.id === gang.id) || gang;
+      const currentSafeItems = latestGang.safeItems || safeItems;
     const value = Number(transactionAmount);
-    const itemPicks = (gang.safeItems || [])
+      const itemPicks = currentSafeItems
       .map((item) => ({ item, qty: Number(itemQuantities[item.id] || 0) }))
       .filter(({ qty }) => Number.isFinite(qty) && qty > 0);
     const hasMoney = Number.isFinite(value) && value > 0;
@@ -982,11 +991,11 @@ function Payments({ gang, update }) {
       id: uid(), gangId: gang.id, ...(transactionSource === "member" ? { memberId } : {}), week,
       amount: hasMoney ? value : 0, type: transactionType,
       items: itemPicks.map(({ item, qty }) => ({ itemId: item.id, name: item.name, quantity: qty, image: item.image || "" })),
-      note: transactionNote.trim(), user: data.currentUser || "Admin", createdAt,
+      note: transactionNote.trim(), user: latestData.currentUser || "Admin", createdAt,
     };
-    const nextPayments = [...(data.payments || []), payment];
+    const nextPayments = [...(latestData.payments || []), payment];
     const nextGangs = itemPicks.length
-      ? (data.gangs || []).map((entry) => {
+      ? (latestData.gangs || []).map((entry) => {
           if (entry.id !== gang.id) return entry;
           return {
             ...entry,
@@ -1014,7 +1023,7 @@ function Payments({ gang, update }) {
           };
         })
       : data.gangs;
-    await saveSharedStore({ ...data, gangs: nextGangs, payments: nextPayments });
+    await saveSharedStore({ ...latestData, gangs: nextGangs, payments: nextPayments });
     setTransactionAmount("");
     setTransactionNote("");
     setItemQuantities({});
@@ -1034,9 +1043,9 @@ function Payments({ gang, update }) {
         <label className="field"><span className="label">หมายเหตุ</span><input className="input" value={transactionNote} onChange={(e) => setTransactionNote(e.target.value)} placeholder="เช่น ฝากเงินวันเสาร์ หรือ เบิกค่าใช้จ่าย" /></label>
         <div className="field">
           <span className="label">ส่งไอเทมพร้อมรายการเงิน</span>
-          {(gang.safeItems || []).length ? (
+          {safeItems.length ? (
             <ul className="list">
-              {(gang.safeItems || []).filter((item) => Number(item.qty) > 0).map((item) => (
+              {safeItems.filter((item) => Number(item.qty) > 0).map((item) => (
                 <li key={item.id} className="payment-row">
                   {item.image ? <img className="item-list-thumb" src={item.image} alt="" /> : null}
                   <span className="grow"><strong>{item.name}</strong><span className="muted payment-subtitle">คงเหลือ {item.qty} ชิ้น</span></span>
