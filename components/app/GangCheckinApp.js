@@ -731,6 +731,14 @@ function Checkin({ gang, update }) {
                   {member.nickname && (
                     <span className="muted">({member.nickname})</span>
                   )}
+                  {(member.items || []).length > 0 && (
+                    <span className="muted payment-subtitle">
+                      ไอเทม: {(member.items || [])
+                        .filter((item) => Number(item.quantity) > 0)
+                        .map((item) => `${item.name} × ${item.quantity}`)
+                        .join(" · ")}
+                    </span>
+                  )}
                 </span>
                 <span
                   className={`status ${present.has(member.id) ? "present" : "absent"}`}
@@ -994,40 +1002,35 @@ function Payments({ gang, update }) {
       note: transactionNote.trim(), user: latestData.currentUser || "Admin", createdAt,
     };
     const nextPayments = [...(latestData.payments || []), payment];
-    const nextGangs = itemPicks.length
-      ? (latestData.gangs || []).map((entry) => {
-          if (entry.id !== gang.id) return entry;
-          return {
-            ...entry,
-            members: entry.members.map((member) => {
-              if (member.id !== memberId) return member;
-              const memberItems = member.items || [];
-              return {
-                ...member,
-                items: itemPicks.reduce((items, { item, qty }) => {
-                  const existing = items.find((memberItem) => memberItem.itemId === item.id);
-                  if (existing) {
-                    return items.map((memberItem) => memberItem.itemId === item.id
-                      ? { ...memberItem, quantity: Number(memberItem.quantity) + qty }
-                      : memberItem);
-                  }
-                  return [...items, {
-                    itemId: item.id,
-                    name: item.name,
-                    quantity: qty,
-                    image: item.image || "",
-                  }];
-                }, [...memberItems]),
-              };
-            }),
-          };
-        })
-      : data.gangs;
+    const nextGangs = (latestData.gangs || []).map((entry) => {
+      if (entry.id !== gang.id || !itemPicks.length) return entry;
+      return {
+        ...entry,
+        members: (entry.members || []).map((member) => {
+          if (member.id !== memberId) return member;
+          const nextMemberItems = [...(member.items || [])];
+          itemPicks.forEach(({ item, qty }) => {
+            const existing = nextMemberItems.find((memberItem) => memberItem.itemId === item.id);
+            if (existing) {
+              existing.quantity = Number(existing.quantity) + qty;
+            } else {
+              nextMemberItems.push({
+                itemId: item.id,
+                name: item.name,
+                quantity: qty,
+                image: item.image || "",
+              });
+            }
+          });
+          return { ...member, items: nextMemberItems };
+        }),
+      };
+    });
     await saveSharedStore({ ...latestData, gangs: nextGangs, payments: nextPayments });
     setTransactionAmount("");
     setTransactionNote("");
     setItemQuantities({});
-    update();
+    await update();
   };
   return (
     <div className="stack">
