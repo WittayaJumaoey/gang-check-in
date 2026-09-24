@@ -1004,26 +1004,28 @@ function Payments({ gang, update }) {
     const nextPayments = [...(latestData.payments || []), payment];
     const nextGangs = (latestData.gangs || []).map((entry) => {
       if (entry.id !== gang.id || !itemPicks.length) return entry;
+      const nextSafeItems = (entry.safeItems || []).map((item) => {
+        const pick = itemPicks.find(({ item: pickedItem }) => pickedItem.id === item.id);
+        return pick ? { ...item, qty: Number(item.qty) + pick.qty } : item;
+      });
+      const nextSafeLogs = [
+        ...itemPicks.map(({ item, qty }) => ({
+          id: uid(),
+          date: week,
+          type: "in",
+          itemId: item.id,
+          itemName: item.name,
+          quantity: qty,
+          note: transactionNote.trim() || "ส่งไอเทมเข้าตู้",
+          user: latestData.currentUser || "Admin",
+          createdAt,
+        })),
+        ...(entry.safeLogs || []),
+      ];
       return {
         ...entry,
-        members: (entry.members || []).map((member) => {
-          if (member.id !== memberId) return member;
-          const nextMemberItems = [...(member.items || [])];
-          itemPicks.forEach(({ item, qty }) => {
-            const existing = nextMemberItems.find((memberItem) => memberItem.itemId === item.id);
-            if (existing) {
-              existing.quantity = Number(existing.quantity) + qty;
-            } else {
-              nextMemberItems.push({
-                itemId: item.id,
-                name: item.name,
-                quantity: qty,
-                image: item.image || "",
-              });
-            }
-          });
-          return { ...member, items: nextMemberItems };
-        }),
+        safeItems: nextSafeItems,
+        safeLogs: nextSafeLogs,
       };
     });
     await saveSharedStore({ ...latestData, gangs: nextGangs, payments: nextPayments });
@@ -1057,7 +1059,7 @@ function Payments({ gang, update }) {
               ))}
             </ul>
           ) : <p className="empty">ยังไม่มีไอเทมในตู้เซฟ</p>}
-          <p className="muted">ไอเทมจะถูกแนบไว้ในประวัติการส่งเท่านั้น ไม่หักจำนวนจากตู้เซฟ</p>
+          <p className="muted">ไอเทมจะถูกเพิ่มกลับเข้าตู้เซฟ และบันทึกประวัติการนำเข้าตู้</p>
         </div>
         {isAdmin && <Button onClick={addTransaction} disabled={(transactionSource === "member" && !memberId) || (!transactionAmount && !Object.values(itemQuantities).some((qty) => Number(qty) > 0))}>บันทึกรายการ</Button>}
         {!isAdmin && <p className="warning">ดูยอดเงินได้ แต่เฉพาะ Admin เท่านั้นที่แก้ไขยอดได้</p>}
