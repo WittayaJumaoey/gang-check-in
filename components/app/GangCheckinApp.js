@@ -977,8 +977,6 @@ function Payments({ gang, update }) {
     const hasMoney = Number.isFinite(value) && value > 0;
     if ((transactionSource === "member" && !memberId) || (!hasMoney && !itemPicks.length)) return;
     if (itemPicks.length && (!memberId || transactionSource !== "member")) return;
-    const shortage = itemPicks.find(({ item, qty }) => Number(item.qty) < qty);
-    if (shortage) return;
     const createdAt = new Date().toISOString();
     const payment = {
       id: uid(), gangId: gang.id, ...(transactionSource === "member" ? { memberId } : {}), week,
@@ -987,26 +985,7 @@ function Payments({ gang, update }) {
       note: transactionNote.trim(), user: data.currentUser || "Admin", createdAt,
     };
     const nextPayments = [...(data.payments || []), payment];
-    const nextSafeItems = itemPicks.length
-      ? (gang.safeItems || []).map((item) => {
-          const pick = itemPicks.find((entry) => entry.item.id === item.id);
-          return pick ? { ...item, qty: Number(item.qty) - pick.qty } : item;
-        })
-      : gang.safeItems;
-    const nextSafeLogs = itemPicks.length
-      ? [
-          ...itemPicks.map(({ item, qty }) => ({
-            id: uid(), date: week, type: "out", itemId: item.id, itemName: item.name,
-            quantity: qty, memberId, note: transactionNote.trim() || "ส่งพร้อมรายการเงิน",
-            user: data.currentUser || "Admin", createdAt,
-          })),
-          ...(gang.safeLogs || []),
-        ]
-      : gang.safeLogs;
-    const nextGangs = (data.gangs || []).map((entry) =>
-      entry.id === gang.id ? { ...entry, safeItems: nextSafeItems, safeLogs: nextSafeLogs } : entry,
-    );
-    await saveSharedStore({ ...data, gangs: nextGangs, payments: nextPayments });
+    await saveSharedStore({ ...data, payments: nextPayments });
     setTransactionAmount("");
     setTransactionNote("");
     setItemQuantities({});
@@ -1019,7 +998,7 @@ function Payments({ gang, update }) {
           <div><p className="label">ยอดส่งเงินรายสมาชิก</p><p className="muted">สมาชิกแต่ละคนต้องส่งให้ครบ 200,000 บาท</p></div>
           <span className={`payment-status ${complete ? "payment-complete" : ""}`}>{complete ? "ครบ 200k แล้ว" : "ยังไม่ครบ"}</span>
         </div>
-        <div className={`payment-summary ${complete ? "payment-summary-complete" : ""}`}><div className="row"><span className="label">เงินทั้งหมดภายในแก็งค์</span><strong>{gangTotal.toLocaleString()} บาท</strong></div><p className="muted">รวมทุกรายการฝากและถอนทุกสัปดาห์ ไม่รีเซ็ตเมื่อเปลี่ยนอาทิตย์</p></div>
+        <div className={`payment-summary ${complete ? "payment-summary-complete" : ""}`}><div className="row"><span className="label">เงินทั้งหมดภายในแก็งค์</span><strong>{gangTotal.toLocaleString()} บาท</strong></div><p className="muted">รวมทุกรายการฝากและถอนทุกสัปดาห์</p></div>
         <label className="field"><span className="label">สัปดาห์/วันที่ส่งเงิน</span><input className="input" type="date" value={week} onChange={(e) => setWeek(e.target.value)} /></label>
         <div className="form-grid"><label className="field"><span className="label">ฝากเงินเข้า</span><select className="input" value={transactionSource} onChange={(e) => setTransactionSource(e.target.value)}><option value="member">สมาชิก</option><option value="fund">กองเงินรวมของแก๊ง</option></select></label><label className="field"><span className="label">สมาชิก</span><select className="input" value={memberId} disabled={transactionSource !== "member"} onChange={(e) => setMemberId(e.target.value)}><option value="">เลือกสมาชิก</option>{gang.members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label></div>
         <div className="form-grid"><label className="field"><span className="label">ประเภทรายการ</span><select className="input" value={transactionType} onChange={(e) => setTransactionType(e.target.value)}><option value="deposit">ฝาก/ส่งเงิน (+)</option><option value="withdrawal">ถอน/เบิกเงิน (-)</option></select></label><label className="field"><span className="label">จำนวนเงิน</span><input className="input" type="number" min="0" value={transactionAmount} onChange={(e) => setTransactionAmount(e.target.value)} placeholder="จำนวนเงิน" /></label></div>
@@ -1037,7 +1016,7 @@ function Payments({ gang, update }) {
               ))}
             </ul>
           ) : <p className="empty">ยังไม่มีไอเทมในตู้เซฟ</p>}
-          <p className="muted">ไอเทมจะส่งให้สมาชิกที่เลือกและถูกหักจากตู้เมื่อบันทึก</p>
+          <p className="muted">ไอเทมจะถูกแนบไว้ในประวัติการส่งเท่านั้น ไม่หักจำนวนจากตู้เซฟ</p>
         </div>
         {isAdmin && <Button onClick={addTransaction} disabled={(transactionSource === "member" && !memberId) || (!transactionAmount && !Object.values(itemQuantities).some((qty) => Number(qty) > 0))}>บันทึกรายการ</Button>}
         {!isAdmin && <p className="warning">ดูยอดเงินได้ แต่เฉพาะ Admin เท่านั้นที่แก้ไขยอดได้</p>}
