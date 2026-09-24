@@ -985,7 +985,36 @@ function Payments({ gang, update }) {
       note: transactionNote.trim(), user: data.currentUser || "Admin", createdAt,
     };
     const nextPayments = [...(data.payments || []), payment];
-    await saveSharedStore({ ...data, payments: nextPayments });
+    const nextGangs = itemPicks.length
+      ? (data.gangs || []).map((entry) => {
+          if (entry.id !== gang.id) return entry;
+          return {
+            ...entry,
+            members: entry.members.map((member) => {
+              if (member.id !== memberId) return member;
+              const memberItems = member.items || [];
+              return {
+                ...member,
+                items: itemPicks.reduce((items, { item, qty }) => {
+                  const existing = items.find((memberItem) => memberItem.itemId === item.id);
+                  if (existing) {
+                    return items.map((memberItem) => memberItem.itemId === item.id
+                      ? { ...memberItem, quantity: Number(memberItem.quantity) + qty }
+                      : memberItem);
+                  }
+                  return [...items, {
+                    itemId: item.id,
+                    name: item.name,
+                    quantity: qty,
+                    image: item.image || "",
+                  }];
+                }, [...memberItems]),
+              };
+            }),
+          };
+        })
+      : data.gangs;
+    await saveSharedStore({ ...data, gangs: nextGangs, payments: nextPayments });
     setTransactionAmount("");
     setTransactionNote("");
     setItemQuantities({});
@@ -1022,7 +1051,7 @@ function Payments({ gang, update }) {
         {!isAdmin && <p className="warning">ดูยอดเงินได้ แต่เฉพาะ Admin เท่านั้นที่แก้ไขยอดได้</p>}
       </Card>
       <Card>
-        <ul className="list">{gang.members.map((member) => { const total = amountFor(member.id); const completeMember = total >= memberTarget; return <li key={member.id} className={completeMember ? "payment-row payment-row-complete" : "payment-row"}><span className="grow"><strong>{member.name}</strong><span className="muted payment-subtitle">เป้าหมาย 200,000 บาท</span></span><span className={`payment-status ${completeMember ? "payment-complete" : ""}`}>{completeMember ? "ครบแล้ว" : `${total.toLocaleString()} บาท`}</span></li>; })}</ul>
+        <ul className="list">{gang.members.map((member) => { const total = amountFor(member.id); const completeMember = total >= memberTarget; const memberItems = (member.items || []).filter((item) => Number(item.quantity) > 0); return <li key={member.id} className={completeMember ? "payment-row payment-row-complete" : "payment-row"}><span className="grow"><strong>{member.name}</strong><span className="muted payment-subtitle">เป้าหมาย 200,000 บาท</span>{memberItems.length ? <span className="muted payment-subtitle">ไอเทม: {memberItems.map((item) => `${item.name} × ${item.quantity}`).join(" · ")}</span> : null}</span><span className={`payment-status ${completeMember ? "payment-complete" : ""}`}>{completeMember ? "ครบแล้ว" : `${total.toLocaleString()} บาท`}</span></li>; })}</ul>
         {!gang.members.length && <p className="empty">ยังไม่มีสมาชิกในแก๊งนี้</p>}
       </Card>
       <Card>
